@@ -50,8 +50,11 @@ test/
 
 ## ต้องทำต่อ (TODO)
 
-- [ ] รับ Firebase config จากผู้ใช้ → ใส่ใน `assets/js/firebase-config.js`
-- [ ] ตั้ง Firestore security rules เบื้องต้น
+- [x] รับ Firebase config จากผู้ใช้ → ใส่ใน `assets/js/firebase-config.js` แล้ว (project: `quizjoy-3d136`)
+      **ยืนยันแล้วว่าเชื่อมต่อ Firestore จริงได้** — เขียน/อ่าน doc ทดสอบสำเร็จผ่าน `test/firestore-selftest.html`
+- [x] Firestore Database สร้างแล้ว (Standard edition, test mode, asia-southeast1) — ใช้ได้ถึง 30 ก.ย. 2026
+      ก่อนหมดอายุต้องตั้ง security rules ที่รัดกุมกว่า test mode (ดู TODO ถัดไป)
+- [ ] ตั้ง Firestore security rules แบบใช้งานจริง (ก่อน 30 ก.ย. 2026 ที่ test mode หมดอายุ)
 - [x] Integrate MediaPipe HandLandmarker (`gesture-detection.js`) — v1.0.1, GPU→CPU delegate fallback,
       confidence threshold, dead-zone, smoothing (EMA), `onError` callback ให้ fallback ไป tap ได้เอง
       **ยืนยันแล้วว่า pipeline โหลด/รัน inference ถูกต้อง** (`test/mediapipe-selftest.html` — เจอมือ 21

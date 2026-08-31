@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Firestore Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Firestore Connection Self-Test</h1>
+  <p>ทดสอบว่า config เชื่อมต่อกับ Firestore project จริง เขียน/อ่าน doc ทดสอบได้จริง</p>
+  <div id="log">กำลังเริ่มทดสอบ...</div>
+
+  <script type="module">
+    const logEl = document.getElementById("log");
+    const lines = [];
+    function log(msg, cls = "") {
+      lines.push(cls ? `<span class="${cls}">${msg}</span>` : msg);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    async function run() {
+      try {
+        log("[1/4] import firebase-init.js (initializeApp + getFirestore)...");
+        const { db, doc, setDoc, collection, serverTimestamp } = await import("../assets/js/firebase-init.js");
+        const { getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        log("✅ import สำเร็จ + initializeApp ไม่ throw error", "ok");
+
+        log("[2/4] เขียน doc ทดสอบไปที่ _selftest/ping ...");
+        const ref = doc(db, "_selftest", "ping");
+        await setDoc(ref, { message: "hello from quizjoy self-test", ts: serverTimestamp() });
+        log("✅ เขียนสำเร็จ", "ok");
+
+        log("[3/4] อ่าน doc กลับมา...");
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          log(`✅ อ่านสำเร็จ: ${JSON.stringify(snap.data())}`, "ok");
+        } else {
+          throw new Error("เขียนสำเร็จแต่อ่านกลับมาไม่เจอ doc (ไม่ควรเกิดขึ้น)");
+        }
+
+        log("[4/4] สรุป");
+        log("🎉 เชื่อมต่อ Firestore project จริงสำเร็จทั้งหมด — เขียน+อ่านได้จริง", "ok");
+      } catch (err) {
+        log(`❌ ล้มเหลว: ${err.code || ""} ${err.message}`, "fail");
+        if (String(err.message).includes("PERMISSION_DENIED") || err.code === "permission-denied") {
+          log("→ อาจเป็นเพราะยังไม่ได้ตั้ง Firestore Security Rules ให้เขียนได้ (โหมด test mode ควรเขียนได้อยู่แล้ว ถ้า test mode หมดอายุ 30 วันจะ deny)");
+        }
+        if (String(err.message).toLowerCase().includes("not been used") || String(err.message).toLowerCase().includes("does not exist")) {
+          log("→ ยังไม่ได้กด Create database ในหน้า Firestore Database ของ Firebase Console");
+        }
+        console.error(err);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>
