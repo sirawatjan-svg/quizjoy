@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>สร้างห้อง / เริ่มเกม — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="screen">
+    <a href="index.html" style="color:var(--muted); align-self:flex-start;">← กลับหน้าครู</a>
+    <h1>🚀 สร้างห้อง / เริ่มเกม</h1>
+
+    <div class="panel">
+      <p style="color:var(--muted); font-size:0.9rem;">
+        ขั้นตอน: เลือกคำถามจากคลัง (หรือเขียนใหม่) → preview ทั้งชุด → ตั้งชื่อควิซ → publish เพื่อสร้าง QR
+      </p>
+      <p style="color:var(--muted)">
+        ⚠️ ส่วนนี้ยังเป็นโครง — รอเชื่อมต่อ Firestore เพื่อดึงคำถามจากคลังจริง
+      </p>
+    </div>
+
+    <div class="panel" id="qr-panel" style="display:none;">
+      <h3>ห้องพร้อมแล้ว</h3>
+      <p>รหัสห้อง: <strong id="room-code-out"></strong></p>
+      <div id="qr-code"></div>
+      <p style="color:var(--muted); font-size:0.85rem;">ให้นักเรียนสแกน QR นี้เพื่อเข้าห้อง</p>
+    </div>
+
+    <div class="panel" id="live-scores" style="display:none;">
+      <h3>คะแนนสด</h3>
+      <ol id="live-score-list"></ol>
+    </div>
+  </div>
+
+  <script type="module">
+    // TODO: เมื่อมี Firebase config แล้ว
+    // 1. สร้าง sessions/{roomCode} doc พร้อม questionIds ที่เลือก
+    // 2. generate QR ชี้ไปที่ ../index.html?room={roomCode} (ใช้ไลบรารี QR แบบ client-side, no external CDN dependency ที่ผิดกฎ CSP ถ้าเป็น artifact — แต่หน้านี้ deploy บน GitHub Pages ปกติ ใช้ CDN ได้)
+    // 3. onSnapshot(sessions/{roomCode}/results) -> อัปเดต live-score-list แบบเรียงคะแนนมากไปน้อย
+  </script>
+</body>
+</html>

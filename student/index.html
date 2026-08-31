@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>เล่นเกม — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <!-- หน้าจอเตรียมตัว: ขอสิทธิ์กล้อง + ให้จัดตำแหน่งก่อนเริ่ม -->
+  <div class="screen" id="setup-screen">
+    <h2>เตรียมพร้อม</h2>
+    <p style="color:var(--muted)">วางอุปกรณ์ตั้งไว้ตรงหน้า ให้กล้องเห็นตัวคุณเต็มๆ</p>
+    <video id="preview-video" autoplay playsinline muted style="width:80vw; max-width:360px; border-radius:16px; transform: scaleX(-1);"></video>
+    <button id="start-btn" disabled>เริ่มเล่น</button>
+    <p id="setup-status" style="color:var(--muted); font-size:0.85rem;">กำลังขอสิทธิ์กล้อง...</p>
+  </div>
+
+  <!-- หน้าจอเล่นเกมหลัก -->
+  <div class="quiz-stage" id="quiz-stage" style="display:none;">
+    <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
+    <div class="question-bar" id="question-text">กำลังรอคำถาม...</div>
+
+    <div class="answer-corner tl" id="answer-tl" data-zone="tl">ตัวเลือก A</div>
+    <div class="answer-corner tr" id="answer-tr" data-zone="tr">ตัวเลือก B</div>
+    <div class="answer-corner bl" id="answer-bl" data-zone="bl">ตัวเลือก C</div>
+    <div class="answer-corner br" id="answer-br" data-zone="br">ตัวเลือก D</div>
+
+    <div class="hand-cursor" id="hand-cursor" style="display:none;"></div>
+    <div class="hold-progress"><div id="hold-progress-bar"></div></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

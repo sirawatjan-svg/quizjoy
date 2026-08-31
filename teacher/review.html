@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ผลย้อนหลัง — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .review-layout { max-width: 720px; margin: 0 auto; padding: 24px; text-align: left; }
+    .student-row { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; display:flex; justify-content:space-between; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="review-layout">
+    <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
+    <h1>📊 ผลย้อนหลัง</h1>
+
+    <div class="panel">
+      <label>เลือกรอบเล่น (session)</label>
+      <select id="session-select" style="width:100%;">
+        <option>⚠️ ยังไม่ได้เชื่อมต่อ Firestore</option>
+      </select>
+    </div>
+
+    <h3>คะแนนรายบุคคล</h3>
+    <div id="student-results">
+      <p style="color:var(--muted)">รายชื่อนักเรียนและคะแนนจะแสดงที่นี่หลังเชื่อมต่อ Firebase</p>
+    </div>
+
+    <h3>สรุปรายข้อ (ข้อไหนพลาดเยอะ)</h3>
+    <div id="per-question-stats">
+      <p style="color:var(--muted)">สถิติรายข้อจะแสดงที่นี่ — ช่วยดูว่าข้อไหนต้องทบทวนเพิ่ม</p>
+    </div>
+  </div>
+
+  <script type="module">
+    // TODO: เมื่อมี Firebase config แล้ว
+    // - โหลดรายการ sessions ทั้งหมด -> session-select
+    // - เมื่อเลือก session: โหลด sessions/{id}/results ทั้งหมด แสดงคะแนนต่อคน
+    // - คลิกชื่อนักเรียน -> แสดงรายข้อ (คำตอบที่เลือก vs เฉลย + คำอธิบาย)
+    // - คำนวณ per-question stats: % ตอบถูกของแต่ละข้อในคลาส
+  </script>
+</body>
+</html>

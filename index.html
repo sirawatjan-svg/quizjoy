@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>เข้าห้องเรียน — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <div class="screen">
+    <h1>🎮 Interactive Video Quizjoy</h1>
+    <p style="color:var(--muted)">สแกน QR จากครูแล้วมาที่หน้านี้ กรอกชื่อเพื่อเข้าห้อง</p>
+
+    <div class="panel">
+      <div id="room-code-display" style="margin-bottom:12px; color:var(--muted)"></div>
+      <input id="student-name" type="text" placeholder="ชื่อของคุณ" style="width:100%; margin-bottom:12px;" />
+      <button id="join-btn" style="width:100%">เข้าห้อง</button>
+    </div>
+
+    <p style="color:var(--muted); font-size:0.85rem;">
+      ต้องอนุญาตกล้องหน้า และ<strong>วางอุปกรณ์ตั้งไว้</strong>ให้กล้องเห็นตัวเต็มๆ ก่อนเริ่มเล่น
+    </p>
+  </div>
+
+  <script type="module">
+    // อ่าน room code จาก query string ที่ครูฝังไว้ใน QR เช่น index.html?room=AB12
+    const params = new URLSearchParams(location.search);
+    const room = params.get("room");
+    const display = document.getElementById("room-code-display");
+    if (room) {
+      display.textContent = `ห้อง: ${room}`;
+    } else {
+      display.textContent = "⚠️ ไม่พบรหัสห้อง — สแกน QR จากครูอีกครั้ง";
+    }
+
+    document.getElementById("join-btn").addEventListener("click", () => {
+      const name = document.getElementById("student-name").value.trim();
+      if (!name || !room) return;
+      // TODO: เขียน player ลง Firestore sessions/{room}/players/{studentId}
+      const studentId = crypto.randomUUID();
+      sessionStorage.setItem("quizjoy_name", name);
+      sessionStorage.setItem("quizjoy_room", room);
+      sessionStorage.setItem("quizjoy_studentId", studentId);
+      location.href = `student/index.html?room=${encodeURIComponent(room)}`;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>คลังข้อสอบ — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .bank-layout { max-width: 720px; margin: 0 auto; padding: 24px; text-align: left; }
+    .q-form input, .q-form textarea { width: 100%; margin-bottom: 8px; }
+    .q-list-item { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+    .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; margin-right:6px; }
+  </style>
+</head>
+<body>
+  <div class="bank-layout">
+    <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
+    <h1>📚 คลังข้อสอบ</h1>
+
+    <div class="panel q-form">
+      <h3>เพิ่มคำถามใหม่</h3>
+      <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
+      <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
+      <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
+      <input id="q-opt-tr" placeholder="ตัวเลือก B (มุมขวาบน)" />
+      <input id="q-opt-bl" placeholder="ตัวเลือก C (มุมซ้ายล่าง)" />
+      <input id="q-opt-br" placeholder="ตัวเลือก D (มุมขวาล่าง)" />
+      <select id="q-correct" style="width:100%; margin-bottom:8px;">
+        <option value="tl">เฉลย: A</option>
+        <option value="tr">เฉลย: B</option>
+        <option value="bl">เฉลย: C</option>
+        <option value="br">เฉลย: D</option>
+      </select>
+      <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
+      <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
+      <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
+    </div>
+
+    <h3>คำถามในคลัง</h3>
+    <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
+    <div id="q-list">
+      <p style="color:var(--muted)">
+        ⚠️ ยังไม่ได้เชื่อมต่อ Firestore — จะแสดงรายการคำถามที่นี่หลังใส่ Firebase config แล้ว
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    // TODO: เมื่อมี Firebase config แล้ว
+    // import { db, collection, addDoc, onSnapshot } from "../assets/js/firebase-init.js";
+    //
+    // save-btn click -> addDoc(collection(db, "questionBank"), { subject, text, options, correctZone, explanation, createdAt })
+    // onSnapshot(collection(db, "questionBank")) -> render q-list, filter ด้วย search-box
+
+    document.getElementById("save-btn").addEventListener("click", () => {
+      document.getElementById("save-status").textContent =
+        "⚠️ ยังบันทึกไม่ได้จริง — รอเชื่อมต่อ Firebase config ก่อน";
+    });
+  </script>
+</body>
+</html>
