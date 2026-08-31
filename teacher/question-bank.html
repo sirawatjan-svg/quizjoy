@@ -9,7 +9,11 @@
     .bank-layout { max-width: 720px; margin: 0 auto; padding: 24px; text-align: left; }
     .q-form input, .q-form textarea { width: 100%; margin-bottom: 8px; }
     .q-list-item { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+    .q-list-item .row { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+    .q-list-item .del-btn { background: var(--wrong); flex-shrink:0; padding:6px 12px; font-size:0.8rem; }
     .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; margin-right:6px; }
+    .opt-line { color: var(--muted); font-size: 0.85rem; margin: 2px 0; }
+    .opt-line.correct { color: var(--correct); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -46,15 +50,135 @@
   </div>
 
   <script type="module">
-    // TODO: เมื่อมี Firebase config แล้ว
-    // import { db, collection, addDoc, onSnapshot } from "../assets/js/firebase-init.js";
-    //
-    // save-btn click -> addDoc(collection(db, "questionBank"), { subject, text, options, correctZone, explanation, createdAt })
-    // onSnapshot(collection(db, "questionBank")) -> render q-list, filter ด้วย search-box
+    import {
+      db,
+      collection,
+      addDoc,
+      deleteDoc,
+      doc,
+      onSnapshot,
+      serverTimestamp,
+    } from "../assets/js/firebase-init.js";
 
-    document.getElementById("save-btn").addEventListener("click", () => {
-      document.getElementById("save-status").textContent =
-        "⚠️ ยังบันทึกไม่ได้จริง — รอเชื่อมต่อ Firebase config ก่อน";
+    const subjectEl = document.getElementById("q-subject");
+    const textEl = document.getElementById("q-text");
+    const optEls = {
+      tl: document.getElementById("q-opt-tl"),
+      tr: document.getElementById("q-opt-tr"),
+      bl: document.getElementById("q-opt-bl"),
+      br: document.getElementById("q-opt-br"),
+    };
+    const correctEl = document.getElementById("q-correct");
+    const explainEl = document.getElementById("q-explain");
+    const saveBtn = document.getElementById("save-btn");
+    const saveStatus = document.getElementById("save-status");
+    const listEl = document.getElementById("q-list");
+    const searchBox = document.getElementById("search-box");
+
+    let allQuestions = []; // แคชล่าสุดจาก onSnapshot ไว้ filter ฝั่ง client
+
+    function optionLabel(zone) {
+      return { tl: "A (บนซ้าย)", tr: "B (บนขวา)", bl: "C (ล่างซ้าย)", br: "D (ล่างขวา)" }[zone];
+    }
+
+    function renderList() {
+      const term = searchBox.value.trim().toLowerCase();
+      const filtered = term
+        ? allQuestions.filter(
+            (q) => q.subject.toLowerCase().includes(term) || q.text.toLowerCase().includes(term)
+          )
+        : allQuestions;
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<p style="color:var(--muted)">${
+          allQuestions.length === 0 ? "ยังไม่มีคำถามในคลัง — เพิ่มข้อแรกได้ด้านบน" : "ไม่พบคำถามที่ตรงกับคำค้นหา"
+        }</p>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered
+        .map(
+          (q) => `
+        <div class="q-list-item" data-id="${q.id}">
+          <div class="row">
+            <div>
+              <span class="tag">${q.subject}</span>
+              <p style="margin:6px 0 4px;">${q.text}</p>
+              ${Object.entries(q.options)
+                .map(
+                  ([zone, text]) =>
+                    `<div class="opt-line ${zone === q.correctZone ? "correct" : ""}">${optionLabel(
+                      zone
+                    )}: ${text}${zone === q.correctZone ? " ✓" : ""}</div>`
+                )
+                .join("")}
+            </div>
+            <button class="del-btn" data-id="${q.id}">ลบ</button>
+          </div>
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll(".del-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("ลบคำถามนี้ออกจากคลังถาวร?")) return;
+          await deleteDoc(doc(db, "questionBank", btn.dataset.id));
+        });
+      });
+    }
+
+    onSnapshot(
+      collection(db, "questionBank"),
+      (snap) => {
+        allQuestions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        allQuestions.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        renderList();
+      },
+      (err) => {
+        listEl.innerHTML = `<p style="color:var(--wrong)">โหลดคลังข้อสอบไม่สำเร็จ: ${err.message}</p>`;
+      }
+    );
+
+    searchBox.addEventListener("input", renderList);
+
+    saveBtn.addEventListener("click", async () => {
+      const subject = subjectEl.value.trim();
+      const text = textEl.value.trim();
+      const options = {
+        tl: optEls.tl.value.trim(),
+        tr: optEls.tr.value.trim(),
+        bl: optEls.bl.value.trim(),
+        br: optEls.br.value.trim(),
+      };
+      const correctZone = correctEl.value;
+      const explanation = explainEl.value.trim();
+
+      if (!subject || !text || Object.values(options).some((v) => !v)) {
+        saveStatus.textContent = "⚠️ กรอกให้ครบ: วิชา, คำถาม, และตัวเลือกทั้ง 4 ข้อ";
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveStatus.textContent = "กำลังบันทึก...";
+      try {
+        await addDoc(collection(db, "questionBank"), {
+          subject,
+          text,
+          options,
+          correctZone,
+          explanation,
+          createdAt: serverTimestamp(),
+        });
+        saveStatus.textContent = "✅ บันทึกแล้ว";
+        textEl.value = "";
+        optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
+        explainEl.value = "";
+        // subject คงไว้ตั้งใจ เพราะครูมักเพิ่มหลายข้อติดกันในวิชา/บทเดียวกัน
+      } catch (err) {
+        saveStatus.textContent = `❌ บันทึกไม่สำเร็จ: ${err.message}`;
+      } finally {
+        saveBtn.disabled = false;
+      }
     });
   </script>
 </body>

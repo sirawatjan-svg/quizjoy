@@ -1,8 +1,6 @@
 import { startGestureDetection } from "../assets/js/gesture-detection.js";
-import { sampleQuestions } from "../assets/js/sample-questions.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
-// TODO: เมื่อมี Firebase config จริงแล้ว ค่อยเปิดใช้บรรทัดนี้และต่อ sync คำถาม/คะแนน/เวลาที่ตั้งจากครู
-// import { db, doc, onSnapshot, setDoc, collection } from "../assets/js/firebase-init.js";
+import { db, doc, getDoc, setDoc, serverTimestamp } from "../assets/js/firebase-init.js";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || sessionStorage.getItem("quizjoy_room");
@@ -38,10 +36,9 @@ const corners = {
   br: document.getElementById("answer-br"),
 };
 
-// --- เกม mechanic: จับเวลา (ค่าเริ่มต้น 5 นาที ครูตั้งได้จาก host.html ในอนาคต) ---
-// TODO: อ่านค่านี้จาก sessions/{room}.durationMinutes แทนค่า hardcode เมื่อต่อ Firestore แล้ว
-const DURATION_MS = 5 * 60 * 1000;
+const resultsRef = doc(db, "sessions", room, "results", studentId);
 
+let sessionData = null; // { quizTitle, durationMinutes, questions[] } จาก Firestore
 let mediaStream = null;
 let questionIndex = 0; // วนซ้ำด้วย modulo ความยาวชุดคำถาม ไม่หยุดแม้ตอบครบชุด
 let score = 0;
@@ -59,6 +56,55 @@ let bonusThreshold = randomBonusThreshold();
 
 function randomBonusThreshold() {
   return 3 + Math.floor(Math.random() * 3); // สุ่ม 3-5 ข้อ
+}
+
+async function loadSession() {
+  try {
+    const snap = await getDoc(doc(db, "sessions", room));
+    if (!snap.exists()) {
+      setupStatus.textContent = `❌ ไม่พบห้อง "${room}" — ตรวจสอบรหัสห้องจากครูอีกครั้ง`;
+      startBtn.disabled = true;
+      return;
+    }
+    sessionData = snap.data();
+    if (!sessionData.questions || sessionData.questions.length === 0) {
+      setupStatus.textContent = "❌ ห้องนี้ยังไม่มีคำถาม — แจ้งครูให้ตรวจสอบ";
+      startBtn.disabled = true;
+      return;
+    }
+
+    // ลงทะเบียนเป็นผู้เล่นในห้องทันทีที่รู้ว่าห้องมีอยู่จริง (ไม่ต้องรอกดเริ่มเล่น)
+    await setDoc(
+      doc(db, "sessions", room, "players", studentId),
+      { name: studentName, joinedAt: serverTimestamp() },
+      { merge: true }
+    );
+
+    setupCamera();
+  } catch (err) {
+    setupStatus.textContent = `❌ โหลดห้องไม่สำเร็จ: ${err.message}`;
+    startBtn.disabled = true;
+  }
+}
+
+async function saveProgress(extra = {}) {
+  try {
+    await setDoc(
+      resultsRef,
+      {
+        name: studentName,
+        score,
+        bonusScore,
+        answeredCount,
+        updatedAt: serverTimestamp(),
+        ...extra,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("[quizjoy] บันทึกคะแนนไม่สำเร็จ:", err);
+    // ไม่ block gameplay ถ้าเน็ตสะดุดชั่วคราว — ลองใหม่รอบถัดไปเอง
+  }
 }
 
 async function setupCamera() {
@@ -94,7 +140,8 @@ function loadQuestion() {
   answered = false;
   holdProgressBar.style.width = "0%";
 
-  const q = sampleQuestions[questionIndex % sampleQuestions.length];
+  const questions = sessionData.questions;
+  const q = questions[questionIndex % questions.length];
   questionText.textContent = q.text;
   corners.tl.textContent = q.options.tl;
   corners.tr.textContent = q.options.tr;
@@ -104,7 +151,7 @@ function loadQuestion() {
 }
 
 function nextQuestion() {
-  questionIndex += 1; // เมื่อครบชุด (10 ข้อ) จะวนกลับไปข้อแรกอัตโนมัติด้วย modulo
+  questionIndex += 1; // เมื่อครบชุดจะวนกลับไปข้อแรกอัตโนมัติด้วย modulo
   loadQuestion();
 }
 
@@ -141,6 +188,7 @@ function triggerBonusChallenge() {
       onScore: (delta) => {
         bonusScore += delta;
         showBonusToast(`+${delta}`);
+        saveProgress();
       },
       onEnd: () => {
         mode = "quiz";
@@ -166,7 +214,7 @@ function submitAnswer(zone) {
     else if (key === zone) el.classList.add("wrong");
   });
 
-  // TODO: เขียนคำตอบลง Firestore sessions/{room}/results/{studentId}.answers[]
+  saveProgress();
 
   setTimeout(() => {
     if (Date.now() >= gameEndsAt) return;
@@ -229,7 +277,7 @@ function endGame() {
   endScreen.style.display = "flex";
   finalScoreEl.textContent = score + bonusScore;
   finalSummaryEl.textContent = `ตอบไป ${answeredCount} ข้อ (คะแนนคำถาม ${score} + คะแนนโบนัส ${bonusScore})`;
-  // TODO: บันทึกคะแนนสุดท้ายลง Firestore + แสดง leaderboard รวมทั้งห้อง
+  saveProgress({ status: "finished", finishedAt: serverTimestamp() });
   // TODO: เปิดปุ่ม "ดูเฉลยย้อนหลัง" ไปหน้า review ต่อจากตรงนี้
 }
 
@@ -251,10 +299,12 @@ startBtn.addEventListener("click", async () => {
     });
   }
 
-  gameEndsAt = Date.now() + DURATION_MS;
+  gameEndsAt = Date.now() + sessionData.durationMinutes * 60 * 1000;
   loadQuestion();
   tickTimer();
   timerInterval = setInterval(tickTimer, 250);
 });
 
-setupCamera();
+startBtn.disabled = true;
+setupStatus.textContent = "กำลังโหลดห้อง...";
+loadSession();

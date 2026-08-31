@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Seed Sample Questions</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    button { padding: 10px 16px; border-radius: 8px; border: none; background: #6366f1; color: white; cursor: pointer; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🌱 Seed Sample Questions → questionBank</h1>
+  <p>ใส่คำถามตัวอย่าง (สังคมศึกษา ทวีปแอฟริกา 10 ข้อ) จาก <code>sample-questions.js</code> ลง Firestore
+     คลังข้อสอบจริง — รันครั้งเดียวพอ กดซ้ำจะได้ข้อมูลซ้ำ</p>
+  <button id="seed-btn">เริ่ม Seed</button>
+  <div id="log">พร้อม...</div>
+
+  <script type="module">
+    import { sampleQuestions } from "../assets/js/sample-questions.js";
+    import { db, collection, addDoc, getDocs, serverTimestamp } from "../assets/js/firebase-init.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    function log(msg, cls = "") {
+      lines.push(cls ? `<span class="${cls}">${msg}</span>` : msg);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    document.getElementById("seed-btn").addEventListener("click", async () => {
+      const existing = await getDocs(collection(db, "questionBank"));
+      if (!existing.empty) {
+        log(`⚠️ คลังข้อสอบมีอยู่แล้ว ${existing.size} ข้อ — จะเพิ่มอีก ${sampleQuestions.length} ข้อทับเข้าไป (ไม่ใช่การเขียนทับของเดิม)`);
+      }
+
+      let count = 0;
+      for (const q of sampleQuestions) {
+        await addDoc(collection(db, "questionBank"), {
+          subject: q.subject,
+          text: q.text,
+          options: q.options,
+          correctZone: q.correctZone,
+          explanation: q.explanation ?? "",
+          createdAt: serverTimestamp(),
+        });
+        count += 1;
+        log(`✅ [${count}/${sampleQuestions.length}] ${q.text.slice(0, 40)}...`, "ok");
+      }
+      log(`\n🎉 เสร็จแล้ว! เพิ่มคำถาม ${count} ข้อลงคลังจริง`, "ok");
+    });
+  </script>
+</body>
+</html>

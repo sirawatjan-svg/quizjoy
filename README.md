@@ -11,8 +11,9 @@ Kahoot-style ควิซแบบ Interactive Camera Quiz — นักเร�
 
 ## สถานะ
 
-🚧 กำลังวางโครง (scaffold) — layout/mechanic หลัก, Bonus Challenge ทั้ง 5 เกม, และ MediaPipe pipeline
-ทดสอบแล้ว (ดูหัวข้อ "การทดสอบที่ทำแล้ว" ด้านล่าง) รอ Firebase config จากผู้ใช้ก่อนต่อระบบ backend จริง
+✅ **ระบบหลักทำงานจบ end-to-end แล้วด้วยข้อมูลจริง** — คลังข้อสอบ → สร้างห้อง/QR → นักเรียนเข้าเล่น → คะแนน
+sync สดกลับมาที่ครู → จบเกมด้วยเวลา ทดสอบจริงผ่าน Firestore project `quizjoy-3d136` (ไม่ใช่ mock)
+ที่ยังไม่ทำ: หน้า Review ย้อนหลัง, security rules แบบใช้งานจริง, ทดสอบกล้องบนมือถือจริง
 
 ## สถาปัตยกรรม
 
@@ -37,16 +38,20 @@ quizjoy/
     └── css/
         └── style.css
 test/
-├── mediapipe-selftest.html  # ทดสอบ MediaPipe pipeline แบบ IMAGE mode (ไม่ต้องใช้กล้อง)
-└── bonus-selftest.html      # ทดสอบ logic ของ Bonus Challenge ทั้ง 5 เกมแบบจำลอง zone event
+├── mediapipe-selftest.html    # ทดสอบ MediaPipe pipeline แบบ IMAGE mode (ไม่ต้องใช้กล้อง)
+├── bonus-selftest.html        # ทดสอบ logic ของ Bonus Challenge ทั้ง 5 เกมแบบจำลอง zone event
+├── firestore-selftest.html    # ทดสอบเขียน/อ่าน Firestore จริง (ยืนยัน config เชื่อมต่อได้)
+└── seed-sample-questions.html # ใส่คำถามตัวอย่าง (Africa 10 ข้อ) ลงคลังข้อสอบจริง — รันครั้งเดียวพอ
 ```
 
-## Data Model (Firestore) — แผนเบื้องต้น
+## Data Model (Firestore) — ใช้งานจริงแล้ว
 
-- `questionBank/{questionId}` — คำถาม, ตัวเลือก 4, เฉลย, วิชา/tag, คำอธิบายเฉลย, รูปภาพ (optional)
-- `sessions/{sessionId}` — roomCode, quizTitle, questionIds[], **durationMinutes** (ค่าเริ่มต้น 5), status (waiting/playing/ended), createdAt
-- `sessions/{sessionId}/players/{studentId}` — ชื่อนักเรียน, joinedAt
-- `sessions/{sessionId}/results/{studentId}` — answers[] (questionId, selected, correct, timeMs), score, bonusScore
+- `questionBank/{questionId}` — subject, text, options{tl,tr,bl,br}, correctZone, explanation, createdAt
+- `sessions/{roomCode}` — quizTitle, durationMinutes, **questions[]** (snapshot เต็มของคำถามที่เลือก ณ ตอนสร้างห้อง
+  ไม่ใช่แค่ id — กันปัญหาถ้าครูแก้คลังระหว่างเล่นอยู่), status, createdAt — เอกสาร id คือ room code เอง (เช่น `L3E2C`)
+- `sessions/{roomCode}/players/{studentId}` — name, joinedAt
+- `sessions/{roomCode}/results/{studentId}` — name, score, bonusScore, answeredCount, status, updatedAt
+  (เขียนแบบ merge ทุกครั้งที่ตอบ/ได้คะแนนโบนัส ไม่ใช่เขียนทีเดียวตอนจบ — ทำให้ครูเห็นคะแนนสดได้จริง)
 
 ## ต้องทำต่อ (TODO)
 
@@ -54,7 +59,8 @@ test/
       **ยืนยันแล้วว่าเชื่อมต่อ Firestore จริงได้** — เขียน/อ่าน doc ทดสอบสำเร็จผ่าน `test/firestore-selftest.html`
 - [x] Firestore Database สร้างแล้ว (Standard edition, test mode, asia-southeast1) — ใช้ได้ถึง 30 ก.ย. 2026
       ก่อนหมดอายุต้องตั้ง security rules ที่รัดกุมกว่า test mode (ดู TODO ถัดไป)
-- [ ] ตั้ง Firestore security rules แบบใช้งานจริง (ก่อน 30 ก.ย. 2026 ที่ test mode หมดอายุ)
+- [ ] ตั้ง Firestore security rules แบบใช้งานจริง (ก่อน 30 ก.ย. 2026 ที่ test mode หมดอายุ) — ตอนนี้ยังไม่มีระบบ
+      login ครู (Firebase Auth) เลย เขียน rules แบบจำกัดสิทธิ์เฉพาะครูจริงๆ ไม่ได้จนกว่าจะมี auth ก่อน
 - [x] Integrate MediaPipe HandLandmarker (`gesture-detection.js`) — v1.0.1, GPU→CPU delegate fallback,
       confidence threshold, dead-zone, smoothing (EMA), `onError` callback ให้ fallback ไป tap ได้เอง
       **ยืนยันแล้วว่า pipeline โหลด/รัน inference ถูกต้อง** (`test/mediapipe-selftest.html` — เจอมือ 21
@@ -62,8 +68,13 @@ test/
       บล็อก getUserMedia เสมอ — ต้องทดสอบ threshold/ความไวจริงบนมือถือก่อนใช้งานจริงในห้องเรียน
 - [x] Fallback: แตะจอตอบได้เมื่อกล้อง/แสงมีปัญหา — ทดสอบแล้ว ทำงานถูกต้อง
 - [x] Game mechanic: จับเวลา + วนคำถามซ้ำ (ทดสอบ logic แล้วใน student/app.js)
-- [ ] Teacher: Question Bank CRUD เต็มรูปแบบ (ต่อ Firestore)
-- [ ] Teacher: Quiz Builder (เลือกจากคลัง + เขียนใหม่ → preview → ตั้งชื่อ → publish/QR) + ตั้งเวลาเล่น
+- [x] Teacher: Question Bank CRUD ต่อ Firestore จริงแล้ว — เพิ่ม/ลบ/list realtime + ค้นหา ทดสอบแล้วด้วย
+      คำถามจริง 10 ข้อ (seed จาก `sample-questions.js` ผ่าน `test/seed-sample-questions.html`)
+- [x] Teacher: Quiz Builder ต่อ Firestore จริงแล้ว (`host.html`) — เลือกคำถามจากคลัง (checkbox), ตั้งชื่อ,
+      ตั้งเวลาเล่น, สร้าง session doc พร้อม QR code (คลัง `qrcodejs` จาก cdnjs), คะแนนสด realtime ผ่าน onSnapshot
+      **ทดสอบ end-to-end จริงแล้ว**: สร้างห้อง → นักเรียน join คนละแท็บ → ตอบคำถาม → คะแนนขึ้นที่ครูทันทีไม่ต้องรีเฟรช
+- [x] Student: โหลดคำถาม/เวลาเล่นจากห้องจริงใน Firestore แทน hardcode, เขียนคะแนนกลับแบบ realtime, จบเกม
+      บันทึกสถานะ "finished" — ทดสอบแล้วครบ flow (session not-found error handling ก็ทดสอบ path ไว้ในโค้ดด้วย)
 - [x] Bonus Challenge — ครบทั้ง 5 เกม (ไล่จับ Skibidi, ชูมือสุดขีด, จังหวะมือ 6-7, ตามท่ามือ, ไล่ตี Brainrot)
       ทดสอบแล้วทั้ง end-to-end ในหน้าเล่นจริง (trigger → banner → มินิเกม → กลับเข้าคำถาม) และ logic ระดับ ms
       ผ่าน `test/bonus-selftest.html` (จำลอง zone event แม่นยำ ตรวจ score/debounce/timeout ทุกเกม)

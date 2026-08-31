@@ -5,33 +5,52 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>สร้างห้อง / เริ่มเกม — Interactive Video Quizjoy</title>
   <link rel="stylesheet" href="../assets/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .host-layout { max-width: 640px; margin: 0 auto; padding: 24px; text-align: left; }
+    .q-pick-item { display:flex; align-items:flex-start; gap:10px; background: var(--panel); border-radius: 10px; padding: 10px; margin-bottom: 6px; }
+    .q-pick-item input { margin-top: 4px; }
+    .q-pick-item .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; margin-right:6px; }
+    #qr-code { display:flex; justify-content:center; padding: 12px; background: white; border-radius: 12px; width: fit-content; margin: 12px auto; }
+    #live-score-list li { padding: 4px 0; }
+    .room-code-big { font-size: 2rem; font-weight: 800; letter-spacing: 4px; text-align:center; }
+  </style>
 </head>
 <body>
-  <div class="screen">
-    <a href="index.html" style="color:var(--muted); align-self:flex-start;">← กลับหน้าครู</a>
+  <div class="host-layout">
+    <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>🚀 สร้างห้อง / เริ่มเกม</h1>
 
-    <div class="panel">
-      <p style="color:var(--muted); font-size:0.9rem;">
-        ขั้นตอน: เลือกคำถามจากคลัง (หรือเขียนใหม่) → preview ทั้งชุด → ตั้งชื่อควิซ → publish เพื่อสร้าง QR
-      </p>
+    <div class="panel" id="setup-panel">
+      <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
+      <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
 
-      <label style="display:block; text-align:left; margin-top:12px;">เวลาเล่น (นาที)</label>
+      <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
       <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
-      <p style="color:var(--muted); font-size:0.8rem; text-align:left;">
+      <p style="color:var(--muted); font-size:0.8rem;">
         เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
       </p>
 
-      <p style="color:var(--muted)">
-        ⚠️ ส่วนนี้ยังเป็นโครง — รอเชื่อมต่อ Firestore เพื่อดึงคำถามจากคลังจริง
-      </p>
+      <label style="display:block; margin: 16px 0 4px;">เลือกคำถามจากคลัง</label>
+      <div style="margin-bottom:8px;">
+        <button id="select-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px;">เลือกทั้งหมด</button>
+        <button id="clear-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px; background:#334155;">ล้างที่เลือก</button>
+      </div>
+      <div id="q-pick-list">
+        <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
+      </div>
+
+      <button id="publish-btn" style="width:100%; margin-top:16px;">🚀 สร้างห้องและเริ่มเกม</button>
+      <p id="publish-status" style="color:var(--muted); font-size:0.85rem;"></p>
     </div>
 
     <div class="panel" id="qr-panel" style="display:none;">
-      <h3>ห้องพร้อมแล้ว</h3>
-      <p>รหัสห้อง: <strong id="room-code-out"></strong></p>
+      <h3 style="text-align:center;">ห้องพร้อมแล้ว!</h3>
+      <div class="room-code-big" id="room-code-out"></div>
       <div id="qr-code"></div>
-      <p style="color:var(--muted); font-size:0.85rem;">ให้นักเรียนสแกน QR นี้เพื่อเข้าห้อง</p>
+      <p style="color:var(--muted); font-size:0.85rem; text-align:center;">
+        ให้นักเรียนสแกน QR หรือเข้า <span id="join-url-out"></span> แล้วกรอกรหัสห้องด้านบน
+      </p>
     </div>
 
     <div class="panel" id="live-scores" style="display:none;">
@@ -41,11 +60,144 @@
   </div>
 
   <script type="module">
-    // TODO: เมื่อมี Firebase config แล้ว
-    // 1. สร้าง sessions/{roomCode} doc พร้อม questionIds ที่เลือก และ durationMinutes จาก #duration-input
-    //    (เกมจบด้วยเวลา ไม่ใช่จำนวนข้อ — ฝั่ง student/app.js วนคำถามซ้ำด้วย modulo จนกว่าจะหมดเวลา)
-    // 2. generate QR ชี้ไปที่ ../index.html?room={roomCode} (ใช้ไลบรารี QR แบบ client-side, no external CDN dependency ที่ผิดกฎ CSP ถ้าเป็น artifact — แต่หน้านี้ deploy บน GitHub Pages ปกติ ใช้ CDN ได้)
-    // 3. onSnapshot(sessions/{roomCode}/results) -> อัปเดต live-score-list แบบเรียงคะแนนมากไปน้อย
+    import {
+      db,
+      collection,
+      doc,
+      setDoc,
+      getDocs,
+      onSnapshot,
+      serverTimestamp,
+    } from "../assets/js/firebase-init.js";
+
+    const qPickList = document.getElementById("q-pick-list");
+    const selectAllBtn = document.getElementById("select-all-btn");
+    const clearAllBtn = document.getElementById("clear-all-btn");
+    const publishBtn = document.getElementById("publish-btn");
+    const publishStatus = document.getElementById("publish-status");
+    const setupPanel = document.getElementById("setup-panel");
+    const qrPanel = document.getElementById("qr-panel");
+    const liveScoresPanel = document.getElementById("live-scores");
+    const roomCodeOut = document.getElementById("room-code-out");
+    const joinUrlOut = document.getElementById("join-url-out");
+    const liveScoreList = document.getElementById("live-score-list");
+
+    let bankQuestions = [];
+
+    async function loadBank() {
+      const snap = await getDocs(collection(db, "questionBank"));
+      bankQuestions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      if (bankQuestions.length === 0) {
+        qPickList.innerHTML = `<p style="color:var(--muted)">
+          คลังข้อสอบยังว่างเปล่า — ไปเพิ่มคำถามที่หน้า
+          <a href="question-bank.html" style="color:var(--accent)">คลังข้อสอบ</a> ก่อน
+        </p>`;
+        return;
+      }
+
+      qPickList.innerHTML = bankQuestions
+        .map(
+          (q) => `
+        <label class="q-pick-item">
+          <input type="checkbox" class="q-pick-checkbox" value="${q.id}" checked />
+          <span><span class="tag">${q.subject}</span>${q.text}</span>
+        </label>`
+        )
+        .join("");
+    }
+
+    function getCheckboxes() {
+      return Array.from(document.querySelectorAll(".q-pick-checkbox"));
+    }
+
+    selectAllBtn.addEventListener("click", () => {
+      getCheckboxes().forEach((cb) => (cb.checked = true));
+    });
+    clearAllBtn.addEventListener("click", () => {
+      getCheckboxes().forEach((cb) => (cb.checked = false));
+    });
+
+    function generateRoomCode() {
+      // ตัดตัวอักษร/ตัวเลขที่สับสนกันง่าย (0/O, 1/I) ออก เพื่อให้นักเรียนพิมพ์ตามจอโปรเจกเตอร์ได้ง่าย
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "";
+      for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      return code;
+    }
+
+    function watchLiveScores(roomCode) {
+      liveScoresPanel.style.display = "block";
+      onSnapshot(collection(db, "sessions", roomCode, "results"), (snap) => {
+        const results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        results.sort((a, b) => (b.score ?? 0) + (b.bonusScore ?? 0) - ((a.score ?? 0) + (a.bonusScore ?? 0)));
+        liveScoreList.innerHTML =
+          results.length === 0
+            ? '<li style="color:var(--muted)">ยังไม่มีใครตอบ...</li>'
+            : results
+                .map(
+                  (r) =>
+                    `<li>${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`
+                )
+                .join("");
+      });
+    }
+
+    publishBtn.addEventListener("click", async () => {
+      const quizTitle = document.getElementById("quiz-title").value.trim() || "ควิซไม่มีชื่อ";
+      const durationMinutes = Number(document.getElementById("duration-input").value) || 5;
+      const selectedIds = getCheckboxes()
+        .filter((cb) => cb.checked)
+        .map((cb) => cb.value);
+
+      if (selectedIds.length === 0) {
+        publishStatus.textContent = "⚠️ เลือกคำถามอย่างน้อย 1 ข้อ";
+        return;
+      }
+
+      const selectedQuestions = bankQuestions
+        .filter((q) => selectedIds.includes(q.id))
+        // เก็บ snapshot ข้อมูลคำถาม ณ ตอนสร้างห้อง กันปัญหาถ้าครูแก้คลังระหว่างเล่นอยู่
+        .map(({ id, subject, text, options, correctZone, explanation }) => ({
+          id,
+          subject,
+          text,
+          options,
+          correctZone,
+          explanation: explanation ?? "",
+        }));
+
+      publishBtn.disabled = true;
+      publishStatus.textContent = "กำลังสร้างห้อง...";
+
+      try {
+        const roomCode = generateRoomCode();
+        await setDoc(doc(db, "sessions", roomCode), {
+          quizTitle,
+          durationMinutes,
+          questions: selectedQuestions,
+          status: "waiting",
+          createdAt: serverTimestamp(),
+        });
+
+        setupPanel.style.display = "none";
+        qrPanel.style.display = "block";
+        roomCodeOut.textContent = roomCode;
+        const joinUrl = `${location.origin}${location.pathname.replace(
+          "teacher/host.html",
+          "index.html"
+        )}?room=${roomCode}`;
+        joinUrlOut.textContent = joinUrl;
+        new QRCode(document.getElementById("qr-code"), { text: joinUrl, width: 200, height: 200 });
+
+        watchLiveScores(roomCode);
+      } catch (err) {
+        publishStatus.textContent = `❌ สร้างห้องไม่สำเร็จ: ${err.message}`;
+        publishBtn.disabled = false;
+      }
+    });
+
+    loadBank();
   </script>
 </body>
 </html>

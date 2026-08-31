@@ -4,13 +4,19 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
+  getDocs,
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   serverTimestamp,
   query,
   where,
+  orderBy,
+  limit,
+  arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -20,11 +26,17 @@ export const db = getFirestore(app);
 export {
   collection,
   doc,
+  getDoc,
+  getDocs,
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   serverTimestamp,
   query,
   where,
+  orderBy,
+  limit,
+  arrayUnion,
 };
