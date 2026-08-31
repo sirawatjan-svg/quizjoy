@@ -29,7 +29,7 @@ quizjoy/
 │   ├── index.html          # เมนูหลักของครู (guarded — เด้งไป login.html ถ้ายังไม่ login)
 │   ├── question-bank.html  # คลังข้อสอบ (สร้าง/แก้ไข/ค้นหา) — guarded
 │   ├── host.html            # สร้างห้อง/ตั้งเวลาเล่น/เริ่มเกม/QR/monitor คะแนนสด — guarded
-│   └── review.html          # ดูผลย้อนหลังทั้งห้อง + รายบุคคล — guarded (ยังเป็นสตับ)
+│   └── review.html          # ดูผลย้อนหลังทั้งห้อง + รายบุคคล — guarded, ต่อ Firestore จริงแล้ว
 ├── firestore.rules          # Security rules ใช้งานจริง — publish แล้วในโปรเจกต์จริง
 └── assets/
     ├── js/
@@ -54,7 +54,8 @@ test/
 - `sessions/{roomCode}` — quizTitle, durationMinutes, **questions[]** (snapshot เต็มของคำถามที่เลือก ณ ตอนสร้างห้อง
   ไม่ใช่แค่ id — กันปัญหาถ้าครูแก้คลังระหว่างเล่นอยู่), status, createdAt — เอกสาร id คือ room code เอง (เช่น `L3E2C`)
 - `sessions/{roomCode}/players/{studentId}` — name, joinedAt
-- `sessions/{roomCode}/results/{studentId}` — name, score, bonusScore, answeredCount, status, updatedAt
+- `sessions/{roomCode}/results/{studentId}` — name, score, bonusScore, answeredCount, status, updatedAt,
+  **answers[]** ({questionId, selectedZone, isCorrect, answeredAt} ต่อคำตอบ ผ่าน `arrayUnion` — ใช้ทำหน้า Review)
   (เขียนแบบ merge ทุกครั้งที่ตอบ/ได้คะแนนโบนัส ไม่ใช่เขียนทีเดียวตอนจบ — ทำให้ครูเห็นคะแนนสดได้จริง)
 
 ## ต้องทำต่อ (TODO)
@@ -85,8 +86,11 @@ test/
 - [x] Bonus Challenge — ครบทั้ง 5 เกม (ไล่จับ Skibidi, ชูมือสุดขีด, จังหวะมือ 6-7, ตามท่ามือ, ไล่ตี Brainrot)
       ทดสอบแล้วทั้ง end-to-end ในหน้าเล่นจริง (trigger → banner → มินิเกม → กลับเข้าคำถาม) และ logic ระดับ ms
       ผ่าน `test/bonus-selftest.html` (จำลอง zone event แม่นยำ ตรวจ score/debounce/timeout ทุกเกม)
-- [ ] หน้า Review ย้อนหลัง (นักเรียน + ครู)
-- [ ] Leaderboard สรุปท้ายเกม (คำถาม + bonus รวมกัน)
+- [x] หน้า Review ย้อนหลัง — ครบทั้งฝั่งนักเรียน (`student/index.html` ปุ่ม "ดูเฉลยย้อนหลัง" ที่หน้าจบเกม)
+      และฝั่งครู (`teacher/review.html` — เลือก session, ดูคะแนนรายบุคคล คลิกขยายดูรายข้อ, สรุปรายข้อเรียง
+      จากข้อที่พลาดเยอะสุดก่อน) เก็บ `answers[]` ต่อคำถามลง `results` doc ผ่าน `arrayUnion` เพื่อรองรับฟีเจอร์นี้
+      **ทดสอบ end-to-end จริงแล้ว** ด้วยคำตอบผสมถูก/ผิด ยืนยันทั้งฝั่งนักเรียนและครูตรงกัน
+- [ ] Leaderboard สรุปท้ายเกม (คำถาม + bonus รวมกัน) — ตอนนี้มีคะแนนสดใน host.html แล้ว ที่ขาดคือหน้าสรุปท้ายคาบแยกต่างหาก
 - [ ] Deploy ขึ้น GitHub Pages (`sirawatjan-svg.github.io/quizjoy`)
 
 ## เนื้อหาทดสอบชุดแรก
