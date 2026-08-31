@@ -156,6 +156,25 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .bonus-banner h2 { margin: 0; font-size: 1.6rem; }
 .bonus-banner p { color: var(--muted); margin: 0; }
 
+.review-panel {
+  max-width: 480px;
+  max-height: 50vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.review-item {
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.review-item .q-num { color: var(--muted); font-size: 0.75rem; }
+.review-item .q-text { font-weight: 600; margin: 4px 0 8px; }
+.review-item .your-answer.correct { color: var(--correct); }
+.review-item .your-answer.wrong { color: var(--wrong); }
+.review-item .correct-answer { color: var(--correct); font-size: 0.9rem; }
+.review-item .explanation { color: var(--muted); font-size: 0.85rem; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; }
+
 .bonus-toast {
   position: absolute;
   top: 50%;

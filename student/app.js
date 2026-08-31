@@ -1,6 +1,6 @@
 import { startGestureDetection } from "../assets/js/gesture-detection.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
-import { db, doc, getDoc, setDoc, serverTimestamp } from "../assets/js/firebase-init.js";
+import { db, doc, getDoc, setDoc, serverTimestamp, arrayUnion } from "../assets/js/firebase-init.js";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || sessionStorage.getItem("quizjoy_room");
@@ -24,6 +24,9 @@ const questionText = document.getElementById("question-text");
 const timerBadge = document.getElementById("timer-badge");
 const finalScoreEl = document.getElementById("final-score");
 const finalSummaryEl = document.getElementById("final-summary");
+const reviewToggleBtn = document.getElementById("review-toggle-btn");
+const reviewPanel = document.getElementById("review-panel");
+const reviewList = document.getElementById("review-list");
 const bonusBanner = document.getElementById("bonus-banner");
 const bonusEmoji = document.getElementById("bonus-emoji");
 const bonusTitle = document.getElementById("bonus-title");
@@ -41,12 +44,14 @@ const resultsRef = doc(db, "sessions", room, "results", studentId);
 let sessionData = null; // { quizTitle, durationMinutes, questions[] } จาก Firestore
 let mediaStream = null;
 let questionIndex = 0; // วนซ้ำด้วย modulo ความยาวชุดคำถาม ไม่หยุดแม้ตอบครบชุด
+let currentQuestionId = null; // ใช้ผูกคำตอบกับคำถามตอนบันทึกลง answerHistory
 let score = 0;
 let bonusScore = 0;
 let answeredCount = 0;
 let answered = false;
 let gameEndsAt = null;
 let timerInterval = null;
+let answerHistory = []; // { questionId, selectedZone, isCorrect, answeredAt } ทุกครั้งที่ตอบ ใช้ทำหน้าเฉลยย้อนหลัง
 
 // --- Bonus Challenge state ---
 let mode = "quiz"; // "quiz" | "bonus"
@@ -142,6 +147,7 @@ function loadQuestion() {
 
   const questions = sessionData.questions;
   const q = questions[questionIndex % questions.length];
+  currentQuestionId = q.id;
   questionText.textContent = q.text;
   corners.tl.textContent = q.options.tl;
   corners.tr.textContent = q.options.tr;
@@ -214,7 +220,15 @@ function submitAnswer(zone) {
     else if (key === zone) el.classList.add("wrong");
   });
 
-  saveProgress();
+  const answerEntry = {
+    questionId: currentQuestionId,
+    selectedZone: zone,
+    isCorrect,
+    answeredAt: Date.now(), // เก็บเป็น number ธรรมดา — serverTimestamp() ใช้ในอาร์เรย์ไม่ได้
+  };
+  answerHistory.push(answerEntry);
+
+  saveProgress({ answers: arrayUnion(answerEntry) });
 
   setTimeout(() => {
     if (Date.now() >= gameEndsAt) return;
@@ -271,6 +285,48 @@ function tickTimer() {
   }
 }
 
+const ZONE_LABELS = { tl: "A (บนซ้าย)", tr: "B (บนขวา)", bl: "C (ล่างซ้าย)", br: "D (ล่างขวา)" };
+
+function renderReview() {
+  if (answerHistory.length === 0) {
+    reviewList.innerHTML = `<p style="color:var(--muted)">ยังไม่ได้ตอบคำถามข้อไหนเลย</p>`;
+    return;
+  }
+
+  reviewList.innerHTML = answerHistory
+    .map((a, i) => {
+      const q = sessionData.questions.find((q) => q.id === a.questionId);
+      if (!q) return ""; // กันเคส data ไม่ครบ (ไม่ควรเกิดขึ้นปกติ)
+      return `
+        <div class="review-item">
+          <div class="q-num">ข้อที่ ${i + 1}</div>
+          <div class="q-text">${q.text}</div>
+          <div class="your-answer ${a.isCorrect ? "correct" : "wrong"}">
+            คำตอบของคุณ: ${ZONE_LABELS[a.selectedZone]} — ${q.options[a.selectedZone]} ${a.isCorrect ? "✓" : "✗"}
+          </div>
+          ${
+            a.isCorrect
+              ? ""
+              : `<div class="correct-answer">เฉลย: ${ZONE_LABELS[q.correctZone]} — ${q.options[q.correctZone]}</div>`
+          }
+          ${q.explanation ? `<div class="explanation">💡 ${q.explanation}</div>` : ""}
+        </div>`;
+    })
+    .join("");
+}
+
+reviewToggleBtn.addEventListener("click", () => {
+  const showing = reviewPanel.style.display === "block";
+  if (showing) {
+    reviewPanel.style.display = "none";
+    reviewToggleBtn.textContent = "📖 ดูเฉลยย้อนหลัง";
+  } else {
+    renderReview();
+    reviewPanel.style.display = "block";
+    reviewToggleBtn.textContent = "🔼 ซ่อนเฉลย";
+  }
+});
+
 function endGame() {
   clearInterval(timerInterval);
   quizStage.style.display = "none";
@@ -278,7 +334,6 @@ function endGame() {
   finalScoreEl.textContent = score + bonusScore;
   finalSummaryEl.textContent = `ตอบไป ${answeredCount} ข้อ (คะแนนคำถาม ${score} + คะแนนโบนัส ${bonusScore})`;
   saveProgress({ status: "finished", finishedAt: serverTimestamp() });
-  // TODO: เปิดปุ่ม "ดูเฉลยย้อนหลัง" ไปหน้า review ต่อจากตรงนี้
 }
 
 // --- Tap-to-answer fallback (กันกรณีกล้อง/แสงมีปัญหา) — mode guard กันชนกับ listener ของ bonus game ---

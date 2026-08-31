@@ -7,7 +7,15 @@
   <link rel="stylesheet" href="../assets/css/style.css" />
   <style>
     .review-layout { max-width: 720px; margin: 0 auto; padding: 24px; text-align: left; }
-    .student-row { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; display:flex; justify-content:space-between; cursor:pointer; }
+    .student-row { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; cursor: pointer; }
+    .student-row .row-head { display: flex; justify-content: space-between; align-items: center; }
+    .student-detail { margin-top: 10px; display: none; }
+    .student-detail.open { display: block; }
+    .qstat-row { background: var(--panel); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+    .qstat-row .bar-track { background: rgba(255,255,255,0.08); border-radius: 999px; height: 8px; margin-top: 6px; overflow: hidden; }
+    .qstat-row .bar-fill { height: 100%; background: var(--correct); }
+    .qstat-row.low .bar-fill { background: var(--wrong); }
+    .empty-note { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -16,35 +24,196 @@
     <h1>📊 ผลย้อนหลัง</h1>
 
     <div class="panel">
-      <label>เลือกรอบเล่น (session)</label>
+      <label style="display:block; margin-bottom:6px;">เลือกรอบเล่น (session)</label>
       <select id="session-select" style="width:100%;">
-        <option>⚠️ ยังไม่ได้เชื่อมต่อ Firestore</option>
+        <option>กำลังโหลด...</option>
       </select>
     </div>
 
-    <h3>คะแนนรายบุคคล</h3>
+    <h3>คะแนนรายบุคคล <span style="font-weight:400; font-size:0.8rem; color:var(--muted);">(คลิกชื่อเพื่อดูรายข้อ)</span></h3>
     <div id="student-results">
-      <p style="color:var(--muted)">รายชื่อนักเรียนและคะแนนจะแสดงที่นี่หลังเชื่อมต่อ Firebase</p>
+      <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
     </div>
 
     <h3>สรุปรายข้อ (ข้อไหนพลาดเยอะ)</h3>
     <div id="per-question-stats">
-      <p style="color:var(--muted)">สถิติรายข้อจะแสดงที่นี่ — ช่วยดูว่าข้อไหนต้องทบทวนเพิ่ม</p>
+      <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
     </div>
   </div>
 
   <script type="module">
+    import { db, collection, doc, getDoc, getDocs } from "../assets/js/firebase-init.js";
     import { requireAuth } from "../assets/js/auth-guard.js";
+
+    const ZONE_LABELS = { tl: "A (บนซ้าย)", tr: "B (บนขวา)", bl: "C (ล่างซ้าย)", br: "D (ล่างขวา)" };
+
+    const sessionSelect = document.getElementById("session-select");
+    const studentResultsEl = document.getElementById("student-results");
+    const perQuestionStatsEl = document.getElementById("per-question-stats");
+
+    let currentSessionData = null;
+    let currentStudents = [];
+
+    function formatDate(ts) {
+      if (!ts?.seconds) return "";
+      return new Date(ts.seconds * 1000).toLocaleString("th-TH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    }
+
+    async function loadSessionList() {
+      const snap = await getDocs(collection(db, "sessions"));
+      const sessions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      sessions.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+
+      if (sessions.length === 0) {
+        sessionSelect.innerHTML = `<option>ยังไม่มีห้องที่เคยสร้างเลย</option>`;
+        return;
+      }
+
+      sessionSelect.innerHTML = sessions
+        .map(
+          (s) =>
+            `<option value="${s.id}">${s.quizTitle || "ไม่มีชื่อ"} — ห้อง ${s.id} (${formatDate(s.createdAt)})</option>`
+        )
+        .join("");
+
+      sessionSelect.addEventListener("change", () => loadSessionDetail(sessionSelect.value));
+      loadSessionDetail(sessionSelect.value);
+    }
+
+    async function loadSessionDetail(roomCode) {
+      studentResultsEl.innerHTML = `<p class="empty-note">กำลังโหลด...</p>`;
+      perQuestionStatsEl.innerHTML = `<p class="empty-note">กำลังโหลด...</p>`;
+
+      const sessionSnap = await getDoc(doc(db, "sessions", roomCode));
+      if (!sessionSnap.exists()) {
+        studentResultsEl.innerHTML = `<p class="empty-note">ไม่พบข้อมูลห้องนี้</p>`;
+        return;
+      }
+      currentSessionData = sessionSnap.data();
+
+      const resultsSnap = await getDocs(collection(db, "sessions", roomCode, "results"));
+      currentStudents = resultsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      currentStudents.sort(
+        (a, b) => (b.score ?? 0) + (b.bonusScore ?? 0) - ((a.score ?? 0) + (a.bonusScore ?? 0))
+      );
+
+      renderStudentResults();
+      renderPerQuestionStats();
+    }
+
+    function renderStudentResults() {
+      if (currentStudents.length === 0) {
+        studentResultsEl.innerHTML = `<p class="empty-note">ยังไม่มีนักเรียนตอบในห้องนี้</p>`;
+        return;
+      }
+
+      studentResultsEl.innerHTML = currentStudents
+        .map(
+          (s, i) => `
+        <div class="student-row" data-idx="${i}">
+          <div class="row-head">
+            <span>${i + 1}. ${s.name ?? "?"}</span>
+            <strong>${(s.score ?? 0) + (s.bonusScore ?? 0)} คะแนน</strong>
+          </div>
+          <div class="student-detail" id="detail-${i}"></div>
+        </div>`
+        )
+        .join("");
+
+      studentResultsEl.querySelectorAll(".student-row").forEach((row) => {
+        row.addEventListener("click", () => {
+          const idx = Number(row.dataset.idx);
+          const detailEl = row.querySelector(".student-detail");
+          const isOpen = detailEl.classList.contains("open");
+
+          // ปิดอันอื่นที่เปิดอยู่ ให้เปิดได้ทีละคน (อ่านง่ายกว่า)
+          studentResultsEl.querySelectorAll(".student-detail.open").forEach((el) => el.classList.remove("open"));
+
+          if (!isOpen) {
+            renderStudentDetail(currentStudents[idx], detailEl);
+            detailEl.classList.add("open");
+          }
+        });
+      });
+    }
+
+    function renderStudentDetail(student, container) {
+      const answers = student.answers ?? [];
+      if (answers.length === 0) {
+        container.innerHTML = `<p class="empty-note" style="margin-top:8px;">ไม่มีข้อมูลรายข้อ (อาจเป็นข้อมูลจากก่อนอัปเดตฟีเจอร์นี้)</p>`;
+        return;
+      }
+
+      container.innerHTML = answers
+        .map((a, i) => {
+          const q = currentSessionData.questions.find((q) => q.id === a.questionId);
+          if (!q) return "";
+          return `
+          <div class="review-item">
+            <div class="q-num">ข้อที่ ${i + 1}</div>
+            <div class="q-text">${q.text}</div>
+            <div class="your-answer ${a.isCorrect ? "correct" : "wrong"}">
+              ตอบ: ${ZONE_LABELS[a.selectedZone]} — ${q.options[a.selectedZone]} ${a.isCorrect ? "✓" : "✗"}
+            </div>
+            ${
+              a.isCorrect
+                ? ""
+                : `<div class="correct-answer">เฉลย: ${ZONE_LABELS[q.correctZone]} — ${q.options[q.correctZone]}</div>`
+            }
+            ${q.explanation ? `<div class="explanation">💡 ${q.explanation}</div>` : ""}
+          </div>`;
+        })
+        .join("");
+    }
+
+    function renderPerQuestionStats() {
+      const questions = currentSessionData.questions ?? [];
+      const tally = {}; // questionId -> { total, correct }
+
+      currentStudents.forEach((s) => {
+        (s.answers ?? []).forEach((a) => {
+          if (!tally[a.questionId]) tally[a.questionId] = { total: 0, correct: 0 };
+          tally[a.questionId].total += 1;
+          if (a.isCorrect) tally[a.questionId].correct += 1;
+        });
+      });
+
+      const rows = questions
+        .map((q) => {
+          const t = tally[q.id];
+          const pct = t && t.total > 0 ? Math.round((t.correct / t.total) * 100) : null;
+          return { q, t, pct };
+        })
+        .filter((r) => r.t) // แสดงเฉพาะข้อที่มีคนตอบแล้วจริง
+        .sort((a, b) => a.pct - b.pct); // ข้อที่พลาดเยอะสุดขึ้นก่อน
+
+      if (rows.length === 0) {
+        perQuestionStatsEl.innerHTML = `<p class="empty-note">ยังไม่มีข้อมูลการตอบ</p>`;
+        return;
+      }
+
+      perQuestionStatsEl.innerHTML = rows
+        .map(
+          ({ q, t, pct }) => `
+        <div class="qstat-row ${pct < 50 ? "low" : ""}">
+          <div style="display:flex; justify-content:space-between;">
+            <span>${q.text}</span>
+            <strong>${pct}%</strong>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          <div class="empty-note" style="font-size:0.75rem; margin-top:4px;">ตอบถูก ${t.correct}/${t.total} ครั้ง</div>
+        </div>`
+        )
+        .join("");
+    }
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
+      loadSessionList();
     });
-
-    // TODO: ยังเป็นหน้าสตับ — ยังไม่ได้ต่อ Firestore จริง (แยกงานจากเรื่อง auth/security rules)
-    // - โหลดรายการ sessions ทั้งหมด -> session-select
-    // - เมื่อเลือก session: โหลด sessions/{id}/results ทั้งหมด แสดงคะแนนต่อคน
-    // - คลิกชื่อนักเรียน -> แสดงรายข้อ (คำตอบที่เลือก vs เฉลย + คำอธิบาย)
-    // - คำนวณ per-question stats: % ตอบถูกของแต่ละข้อในคลาส
   </script>
 </body>
 </html>
