@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div class="bank-layout">
+  <div class="bank-layout" id="app-content" style="display:none;">
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>📚 คลังข้อสอบ</h1>
 
@@ -59,7 +59,14 @@
       onSnapshot,
       serverTimestamp,
     } from "../assets/js/firebase-init.js";
+    import { requireAuth } from "../assets/js/auth-guard.js";
 
+    requireAuth(() => {
+      document.getElementById("app-content").style.display = "block";
+      init();
+    });
+
+    function init() {
     const subjectEl = document.getElementById("q-subject");
     const textEl = document.getElementById("q-text");
     const optEls = {
@@ -180,6 +187,7 @@
         saveBtn.disabled = false;
       }
     });
+    } // ปิด init()
   </script>
 </body>
 </html>

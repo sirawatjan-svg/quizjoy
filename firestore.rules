@@ -1,0 +1,58 @@
+rules_version = '2';
+
+// Interactive Video Quizjoy — Firestore Security Rules (แทน "test mode" ที่หมดอายุ 30 ก.ย. 2026)
+//
+// หลักการ:
+// - คลังข้อสอบ (questionBank) เป็นเครื่องมือของครูล้วนๆ → ต้อง login (Firebase Auth) ถึงจะอ่าน/เขียนได้
+//   นักเรียนไม่จำเป็นต้องอ่านคลังนี้ตรงๆ เพราะห้องเกม (sessions) เก็บ snapshot คำถามไว้ในตัวเองแล้ว
+// - ห้องเกม (sessions) ต้องให้นักเรียน "อ่าน" ได้โดยไม่ต้อง login (เข้าห้องด้วยรหัสห้องเฉยๆ ตามดีไซน์)
+//   แต่ "สร้าง/แก้ไข" ห้องได้เฉพาะครูที่ login แล้วเท่านั้น
+// - ผู้เล่น (players) และผลคะแนน (results) นักเรียนต้องเขียนได้โดยไม่ login (ไม่มีระบบ auth ฝั่งนักเรียน
+//   ตามดีไซน์ที่ต้องการให้เข้าเล่นง่ายไม่มี friction) — จำกัดความเสี่ยงด้วยการบังคับ "รูปร่างข้อมูล" ที่เขียนได้
+//   แทน (ต้องเป็น type ที่ถูกต้อง ไม่ใช่ any) ถือเป็นความเสี่ยงที่ยอมรับได้สำหรับเครื่องมือในห้องเรียนขนาดนี้
+//   — ถ้าต้องการความปลอดภัยระดับสูงขึ้นในอนาคต ค่อยเพิ่มระบบ auth ฝั่งนักเรียนทีหลังได้
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /questionBank/{questionId} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /sessions/{roomCode} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if false;
+
+      match /players/{studentId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.name is string
+                               && request.resource.data.name.size() > 0
+                               && request.resource.data.name.size() < 60;
+        allow delete: if false;
+      }
+
+      match /results/{studentId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.name is string
+                               && request.resource.data.name.size() > 0
+                               && request.resource.data.name.size() < 60
+                               && request.resource.data.score is int
+                               && request.resource.data.score >= 0
+                               && request.resource.data.bonusScore is int
+                               && request.resource.data.bonusScore >= 0;
+        allow delete: if false;
+      }
+    }
+
+    // เอกสารทดสอบจาก test/firestore-selftest.html — ต้อง login ถึงจะรันซ้ำได้ (กันคนแปลกหน้าเขียนขยะ)
+    match /_selftest/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ปิดทุกอย่างที่ไม่ได้ระบุไว้ข้างบนเป็นค่าเริ่มต้น
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -7,13 +7,26 @@
   <link rel="stylesheet" href="../assets/css/style.css" />
 </head>
 <body>
-  <div class="screen">
+  <div class="screen" id="app-screen" style="display:none;">
     <h1>👩‍🏫 หน้าครู</h1>
+    <p id="user-email" style="color:var(--muted); font-size:0.85rem;"></p>
     <div class="panel" style="display:flex; flex-direction:column; gap:12px;">
       <a href="question-bank.html"><button style="width:100%">📚 คลังข้อสอบ</button></a>
       <a href="host.html"><button style="width:100%">🚀 สร้างห้อง / เริ่มเกม</button></a>
       <a href="review.html"><button style="width:100%">📊 ผลย้อนหลัง</button></a>
+      <button id="logout-btn" style="width:100%; background:#334155;">ออกจากระบบ</button>
     </div>
   </div>
+
+  <script type="module">
+    import { requireAuth, wireLogoutButton } from "../assets/js/auth-guard.js";
+
+    requireAuth((user) => {
+      document.getElementById("app-screen").style.display = "flex";
+      document.getElementById("user-email").textContent = `เข้าสู่ระบบเป็น: ${user.email}`;
+    });
+
+    wireLogoutButton(document.getElementById("logout-btn"));
+  </script>
 </body>
 </html>

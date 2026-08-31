@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <div class="host-layout">
+  <div class="host-layout" id="app-content" style="display:none;">
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>🚀 สร้างห้อง / เริ่มเกม</h1>
 
@@ -69,7 +69,14 @@
       onSnapshot,
       serverTimestamp,
     } from "../assets/js/firebase-init.js";
+    import { requireAuth } from "../assets/js/auth-guard.js";
 
+    requireAuth(() => {
+      document.getElementById("app-content").style.display = "block";
+      init();
+    });
+
+    function init() {
     const qPickList = document.getElementById("q-pick-list");
     const selectAllBtn = document.getElementById("select-all-btn");
     const clearAllBtn = document.getElementById("clear-all-btn");
@@ -198,6 +205,7 @@
     });
 
     loadBank();
+    } // ปิด init()
   </script>
 </body>
 </html>

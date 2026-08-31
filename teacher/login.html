@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>เข้าสู่ระบบครู — Interactive Video Quizjoy</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .mode-toggle { display:flex; gap:8px; margin-bottom:16px; }
+    .mode-toggle button { flex:1; background:#334155; }
+    .mode-toggle button.active { background: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="screen">
+    <h1>👩‍🏫 เข้าสู่ระบบครู</h1>
+
+    <div class="panel">
+      <div class="mode-toggle">
+        <button id="mode-login" class="active" type="button">เข้าสู่ระบบ</button>
+        <button id="mode-register" type="button">สมัครครั้งแรก</button>
+      </div>
+
+      <input id="email" type="email" placeholder="อีเมล" style="width:100%; margin-bottom:8px;" autocomplete="username" />
+      <input id="password" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)" style="width:100%; margin-bottom:12px;" autocomplete="current-password" />
+      <button id="submit-btn" style="width:100%;">เข้าสู่ระบบ</button>
+      <p id="status" style="color:var(--muted); font-size:0.85rem;"></p>
+    </div>
+
+    <p id="register-hint" style="color:var(--muted); font-size:0.8rem; display:none;">
+      ใช้โหมด "สมัครครั้งแรก" แค่ครั้งเดียวตอนตั้งค่าระบบ — หลังจากนั้นสลับกลับมาโหมด "เข้าสู่ระบบ" ตามปกติ
+    </p>
+  </div>
+
+  <script type="module">
+    import {
+      auth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+    } from "../assets/js/firebase-init.js";
+
+    const modeLoginBtn = document.getElementById("mode-login");
+    const modeRegisterBtn = document.getElementById("mode-register");
+    const emailEl = document.getElementById("email");
+    const passwordEl = document.getElementById("password");
+    const submitBtn = document.getElementById("submit-btn");
+    const statusEl = document.getElementById("status");
+    const registerHint = document.getElementById("register-hint");
+
+    let mode = "login";
+
+    function setMode(next) {
+      mode = next;
+      modeLoginBtn.classList.toggle("active", mode === "login");
+      modeRegisterBtn.classList.toggle("active", mode === "register");
+      submitBtn.textContent = mode === "login" ? "เข้าสู่ระบบ" : "สมัครบัญชีครู";
+      registerHint.style.display = mode === "register" ? "block" : "none";
+      statusEl.textContent = "";
+    }
+
+    modeLoginBtn.addEventListener("click", () => setMode("login"));
+    modeRegisterBtn.addEventListener("click", () => setMode("register"));
+
+    // ถ้า login ค้างอยู่แล้ว (เช่นเปิดหน้านี้ผิด) ส่งกลับไปหน้าครูเลย
+    onAuthStateChanged(auth, (user) => {
+      if (user) location.href = "index.html";
+    });
+
+    submitBtn.addEventListener("click", async () => {
+      const email = emailEl.value.trim();
+      const password = passwordEl.value;
+
+      if (!email || password.length < 6) {
+        statusEl.textContent = "⚠️ กรอกอีเมลและรหัสผ่าน (อย่างน้อย 6 ตัวอักษร)";
+        return;
+      }
+
+      submitBtn.disabled = true;
+      statusEl.textContent = mode === "login" ? "กำลังเข้าสู่ระบบ..." : "กำลังสมัครบัญชี...";
+
+      try {
+        if (mode === "login") {
+          await signInWithEmailAndPassword(auth, email, password);
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+        }
+        location.href = "index.html";
+      } catch (err) {
+        const messages = {
+          "auth/invalid-credential": "อีเมลหรือรหัสผ่านไม่ถูกต้อง",
+          "auth/user-not-found": "ไม่พบบัญชีนี้ — ถ้ายังไม่เคยสมัคร ใช้โหมด 'สมัครครั้งแรก'",
+          "auth/wrong-password": "รหัสผ่านไม่ถูกต้อง",
+          "auth/email-already-in-use": "อีเมลนี้สมัครไว้แล้ว — สลับไปโหมด 'เข้าสู่ระบบ' แทน",
+          "auth/weak-password": "รหัสผ่านสั้นเกินไป (อย่างน้อย 6 ตัวอักษร)",
+          "auth/invalid-email": "รูปแบบอีเมลไม่ถูกต้อง",
+        };
+        statusEl.textContent = `❌ ${messages[err.code] || err.message}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

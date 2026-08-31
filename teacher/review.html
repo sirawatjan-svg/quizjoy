@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <div class="review-layout">
+  <div class="review-layout" id="app-content" style="display:none;">
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>📊 ผลย้อนหลัง</h1>
 
@@ -34,7 +34,13 @@
   </div>
 
   <script type="module">
-    // TODO: เมื่อมี Firebase config แล้ว
+    import { requireAuth } from "../assets/js/auth-guard.js";
+
+    requireAuth(() => {
+      document.getElementById("app-content").style.display = "block";
+    });
+
+    // TODO: ยังเป็นหน้าสตับ — ยังไม่ได้ต่อ Firestore จริง (แยกงานจากเรื่อง auth/security rules)
     // - โหลดรายการ sessions ทั้งหมด -> session-select
     // - เมื่อเลือก session: โหลด sessions/{id}/results ทั้งหมด แสดงคะแนนต่อคน
     // - คลิกชื่อนักเรียน -> แสดงรายข้อ (คำตอบที่เลือก vs เฉลย + คำอธิบาย)
