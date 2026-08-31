@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bonus Engine Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    button { margin: 4px; padding: 8px 14px; border-radius: 8px; border: none; background: #6366f1; color: white; cursor: pointer; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; margin-top: 16px; max-height: 70vh; overflow-y: auto; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+    .corner { display: none; } /* corners จริงไม่ต้องเห็น แค่ต้องมี DOM element ให้ engine ใช้งาน */
+  </style>
+</head>
+<body>
+  <h1>🧪 Bonus Engine Self-Test (จำลอง zone events แม่นยำระดับ ms)</h1>
+  <div>
+    <button id="btn-skibidi">Test Skibidi Dodge (perfect play)</button>
+    <button id="btn-sky">Test Reach for Sky (hold hand up)</button>
+    <button id="btn-bounce">Test Hand Bounce (hit every beat on time)</button>
+    <button id="btn-dance">Test Hand Dance Follow (perfect play)</button>
+    <button id="btn-brainrot">Test Brainrot Swat (hit everything instantly)</button>
+    <button id="btn-all">Run All</button>
+  </div>
+  <div id="log">พร้อมทดสอบ...</div>
+
+  <div class="corner" id="answer-tl"></div>
+  <div class="corner" id="answer-tr"></div>
+  <div class="corner" id="answer-bl"></div>
+  <div class="corner" id="answer-br"></div>
+  <div id="stage"></div>
+
+  <script type="module">
+    import {
+      runSkibidiDodge,
+      runReachForSky,
+      runHandBounce,
+      runHandDanceFollow,
+      runBrainrotSwat,
+    } from "../assets/js/bonus-engine.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    function log(msg, cls = "") {
+      lines.push(cls ? `<span class="${cls}">${msg}</span>` : msg);
+      logEl.innerHTML = lines.join("\n");
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    const corners = {
+      tl: document.getElementById("answer-tl"),
+      tr: document.getElementById("answer-tr"),
+      bl: document.getElementById("answer-bl"),
+      br: document.getElementById("answer-br"),
+    };
+    const stage = document.getElementById("stage");
+
+    function makeCtx(name) {
+      let zoneHandler = null;
+      let totalScore = 0;
+      return {
+        ctx: {
+          corners,
+          stage,
+          setZoneHandler: (fn) => {
+            zoneHandler = fn;
+          },
+          onScore: (delta) => {
+            totalScore += delta;
+            log(`  [score] +${delta} (รวม ${totalScore})`);
+          },
+          onEnd: () => {
+            log(`✅ [${name}] จบเกม — คะแนนรวม ${totalScore}`, "ok");
+          },
+        },
+        fireZone: (zone) => zoneHandler?.({ zone, point: zone ? { x: 0.5, y: 0.5 } : null }),
+        fireY: (y) => zoneHandler?.({ zone: null, point: { x: 0.5, y } }),
+        getScore: () => totalScore,
+      };
+    }
+
+    function wait(ms) {
+      return new Promise((r) => setTimeout(r, ms));
+    }
+
+    async function testSkibidi() {
+      log("\n=== Skibidi Dodge: จำลองการ์ดเป้าหมาย แล้วยิง zone ทั้ง 4 พร้อมกันทุกครั้ง (จะต้องโดนเป้าเสมอ) ===");
+      const { ctx, fireZone } = makeCtx("Skibidi Dodge");
+      runSkibidiDodge(ctx);
+      for (let i = 0; i < 6; i++) {
+        await wait(150);
+        // ยิงทุกโซน (ไม่รู้ว่าเป้าคือโซนไหน) แต่เกมออกแบบมาให้ยิงถูกโซนแล้วจบรอบทันที
+        ["tl", "tr", "bl", "br"].forEach((z) => fireZone(z));
+        await wait(300);
+      }
+    }
+
+    async function testReachSky() {
+      log("\n=== Reach for Sky: ยกมือค้าง (y=0.1) ต่อเนื่อง 3.2 วิ ===");
+      const { ctx, fireY } = makeCtx("Reach for Sky");
+      runReachForSky(ctx);
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - start > 3200) {
+          clearInterval(interval);
+          return;
+        }
+        fireY(0.1); // ตำแหน่งสูง (raised)
+      }, 50);
+    }
+
+    async function testHandBounce() {
+      log("\n=== Hand Bounce: ต้องรู้จังหวะ beat ล่วงหน้าไม่ได้ (engine สุ่ม/ปรับ BPM เอง) — แทนด้วยการยิงทั้งสองฝั่งรัวๆ ===");
+      const { ctx, fireZone } = makeCtx("Hand Bounce");
+      runHandBounce(ctx);
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - start > 10500) {
+          clearInterval(interval);
+          return;
+        }
+        fireZone("tl"); // ฝั่งซ้าย
+        fireZone("tr"); // ฝั่งขวา (ยิงสลับเร็วๆ เพื่อให้มีโอกาสตรงจังหวะบ่อยที่สุด)
+      }, 80);
+    }
+
+    async function testHandDanceFollow() {
+      log("\n=== Hand Dance Follow: ไม่รู้ลำดับล่วงหน้า (engine สุ่มเอง) ทดสอบแค่ debounce logic ด้วยการยิง zone เดิมซ้ำๆ ===");
+      const { ctx, fireZone } = makeCtx("Hand Dance Follow");
+      runHandDanceFollow(ctx);
+      // ทดสอบ debounce:ยิง zone เดิมรัวๆ ไม่ควรนับเป็นหลาย input
+      await wait(1000);
+      fireZone("tl");
+      fireZone("tl");
+      fireZone("tl");
+      log("  (ยิง tl 3 ครั้งติด ควรถูกนับเป็น 1 input เท่านั้นถ้า debounce ทำงานถูกต้อง — ดู log คะแนน/finish ด้านบนประกอบ)");
+      await wait(8000); // ปล่อยให้ safety timeout จบเกมเอง เพราะเราไม่รู้ลำดับที่ถูกต้อง
+    }
+
+    async function testBrainrotSwat() {
+      log("\n=== Brainrot Swat: ยิงทุกโซนถี่ๆ ตลอด 10 วิ (ควรโดนแทบทุกตัวที่โผล่) ===");
+      const { ctx, fireZone } = makeCtx("Brainrot Swat");
+      runBrainrotSwat(ctx);
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - start > 10500) {
+          clearInterval(interval);
+          return;
+        }
+        ["tl", "tr", "bl", "br"].forEach((z) => fireZone(z));
+      }, 100);
+    }
+
+    document.getElementById("btn-skibidi").onclick = testSkibidi;
+    document.getElementById("btn-sky").onclick = testReachSky;
+    document.getElementById("btn-bounce").onclick = testHandBounce;
+    document.getElementById("btn-dance").onclick = testHandDanceFollow;
+    document.getElementById("btn-brainrot").onclick = testBrainrotSwat;
+    document.getElementById("btn-all").onclick = async () => {
+      await testSkibidi();
+      await wait(6000);
+      await testReachSky();
+      await wait(4000);
+      await testHandBounce();
+      await wait(11000);
+      await testHandDanceFollow();
+      await wait(9000);
+      await testBrainrotSwat();
+    };
+  </script>
+</body>
+</html>

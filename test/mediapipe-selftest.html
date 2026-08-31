@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>MediaPipe Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+    img, canvas { max-width: 300px; border-radius: 8px; margin-top: 12px; }
+    #wrap { position: relative; display: inline-block; }
+    canvas { position: absolute; top: 0; left: 0; }
+  </style>
+</head>
+<body>
+  <h1>🧪 MediaPipe HandLandmarker Self-Test (IMAGE mode)</h1>
+  <p>
+    ทดสอบว่า CDN โหลด WASM + โมเดลได้จริง และ inference pipeline ทำงานถูกต้อง โดยรันกับรูปมือจริง
+    (ไม่ต้องใช้กล้อง/สิทธิ์ getUserMedia — เลี่ยงข้อจำกัดของ sandbox ที่บล็อกกล้องเสมอ)
+  </p>
+  <div id="log">กำลังเริ่มทดสอบ...</div>
+  <div id="wrap">
+    <img id="test-img" crossorigin="anonymous" width="300"
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Hand%2C_fingers_-_back.jpg/960px-Hand%2C_fingers_-_back.jpg" />
+    <canvas id="overlay" width="300" height="450"></canvas>
+  </div>
+
+  <script type="module">
+    const logEl = document.getElementById("log");
+    const lines = [];
+    function log(msg, cls = "") {
+      lines.push(cls ? `<span class="${cls}">${msg}</span>` : msg);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    async function run() {
+      const MEDIAPIPE_VERSION = "1.0.1";
+      try {
+        log(`[1/4] import vision_bundle.mjs @${MEDIAPIPE_VERSION} จาก jsDelivr...`);
+        const { HandLandmarker, FilesetResolver } = await import(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`
+        );
+        log("✅ import bundle สำเร็จ", "ok");
+
+        log("[2/4] โหลด WASM fileset...");
+        const vision = await FilesetResolver.forVisionTasks(
+          `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`
+        );
+        log("✅ WASM fileset โหลดสำเร็จ", "ok");
+
+        log("[3/4] สร้าง HandLandmarker (โหลดโมเดล .task ~7.8MB จาก Google Storage)...");
+        let handLandmarker;
+        try {
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "GPU",
+            },
+            runningMode: "IMAGE",
+            numHands: 2,
+          });
+          log("✅ สร้างโมเดลสำเร็จ (GPU delegate)", "ok");
+        } catch (gpuErr) {
+          log(`⚠️ GPU delegate ล้มเหลว (${gpuErr.message}) ลอง CPU แทน...`);
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "CPU",
+            },
+            runningMode: "IMAGE",
+            numHands: 2,
+          });
+          log("✅ สร้างโมเดลสำเร็จ (CPU delegate)", "ok");
+        }
+
+        log("[4/4] รัน detect() กับรูปมือทดสอบ (Wikimedia Commons)...");
+        const img = document.getElementById("test-img");
+        await new Promise((resolve, reject) => {
+          if (img.complete) return resolve();
+          img.onload = resolve;
+          img.onerror = () => reject(new Error("โหลดรูปทดสอบไม่สำเร็จ"));
+        });
+
+        const result = handLandmarker.detect(img);
+        const handCount = result.landmarks?.length ?? 0;
+
+        if (handCount > 0) {
+          log(`✅ ตรวจพบมือ ${handCount} ข้าง, landmark ${result.landmarks[0].length} จุดต่อข้าง`, "ok");
+          log(JSON.stringify(result.landmarks[0][8], null, 2)); // index fingertip landmark
+
+          // วาด landmark ทับรูปเพื่อยืนยันด้วยตา
+          const canvas = document.getElementById("overlay");
+          const ctx = canvas.getContext("2d");
+          const scaleX = canvas.width / img.naturalWidth;
+          const scaleY = canvas.height / img.naturalHeight;
+          ctx.fillStyle = "#22c55e";
+          result.landmarks[0].forEach((pt) => {
+            ctx.beginPath();
+            ctx.arc(pt.x * canvas.width, pt.y * canvas.height, 3, 0, 2 * Math.PI);
+            ctx.fill();
+          });
+
+          log("\n🎉 สรุป: pipeline ทำงานถูกต้องทั้งหมด (network, WASM, โมเดล, inference)", "ok");
+          log("⚠️ ยังไม่ได้ทดสอบกับวิดีโอกล้องสดจริง — ต้องทดสอบบนอุปกรณ์จริงก่อนใช้งานจริง");
+        } else {
+          log("❌ ไม่พบมือในรูปทดสอบ (pipeline โหลดได้แต่ inference ไม่เจอมือ — อาจเป็นเพราะมุมรูป ลองรูปอื่น)", "fail");
+        }
+      } catch (err) {
+        log(`❌ ล้มเหลว: ${err.message}`, "fail");
+        console.error(err);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>

@@ -243,7 +243,12 @@ startBtn.addEventListener("click", async () => {
   quizStage.style.display = "block";
 
   if (mediaStream) {
-    startGestureDetection(cameraFeed, onZoneUpdate);
+    startGestureDetection(cameraFeed, onZoneUpdate, {
+      onError: () => {
+        setupStatus.textContent = "";
+        showBonusToast("โหมดชี้มือใช้ไม่ได้ตอนนี้ — แตะจอตอบแทนได้เลย");
+      },
+    });
   }
 
   gameEndsAt = Date.now() + DURATION_MS;

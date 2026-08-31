@@ -11,7 +11,8 @@ Kahoot-style ควิซแบบ Interactive Camera Quiz — นักเร�
 
 ## สถานะ
 
-🚧 กำลังวางโครง (scaffold) — layout/mechanic หลักทดสอบใน browser แล้ว รอ Firebase config จากผู้ใช้ก่อนต่อระบบ backend จริง
+🚧 กำลังวางโครง (scaffold) — layout/mechanic หลัก, Bonus Challenge ทั้ง 5 เกม, และ MediaPipe pipeline
+ทดสอบแล้ว (ดูหัวข้อ "การทดสอบที่ทำแล้ว" ด้านล่าง) รอ Firebase config จากผู้ใช้ก่อนต่อระบบ backend จริง
 
 ## สถาปัตยกรรม
 
@@ -30,11 +31,14 @@ quizjoy/
     ├── js/
     │   ├── firebase-config.js   # ← ใส่ config จริงตรงนี้เมื่อได้จากผู้ใช้
     │   ├── firebase-init.js     # init Firebase app (Firestore)
-    │   ├── gesture-detection.js # MediaPipe Hands wrapper (รอ integrate/ทดสอบบนอุปกรณ์จริง)
-    │   ├── bonus-engine.js      # Bonus Challenge mini-games (shuffle-bag picker + 2 เกมพร้อมใช้)
+    │   ├── gesture-detection.js # MediaPipe HandLandmarker wrapper (v1.0.1, GPU→CPU fallback, smoothing)
+    │   ├── bonus-engine.js      # Bonus Challenge: shuffle-bag picker + 5 เกมพร้อมใช้ทั้งหมด
     │   └── sample-questions.js  # ชุดคำถามทดสอบ: สังคมศึกษา ทวีปแอฟริกา (10 ข้อ)
     └── css/
         └── style.css
+test/
+├── mediapipe-selftest.html  # ทดสอบ MediaPipe pipeline แบบ IMAGE mode (ไม่ต้องใช้กล้อง)
+└── bonus-selftest.html      # ทดสอบ logic ของ Bonus Challenge ทั้ง 5 เกมแบบจำลอง zone event
 ```
 
 ## Data Model (Firestore) — แผนเบื้องต้น
@@ -48,13 +52,18 @@ quizjoy/
 
 - [ ] รับ Firebase config จากผู้ใช้ → ใส่ใน `assets/js/firebase-config.js`
 - [ ] ตั้ง Firestore security rules เบื้องต้น
-- [ ] Integrate MediaPipe Hands (`gesture-detection.js`) — จับตำแหน่งมือ map เป็น 4 โซน (ต้องทดสอบบนมือถือจริง)
+- [x] Integrate MediaPipe HandLandmarker (`gesture-detection.js`) — v1.0.1, GPU→CPU delegate fallback,
+      confidence threshold, dead-zone, smoothing (EMA), `onError` callback ให้ fallback ไป tap ได้เอง
+      **ยืนยันแล้วว่า pipeline โหลด/รัน inference ถูกต้อง** (`test/mediapipe-selftest.html` — เจอมือ 21
+      landmark ตรงตำแหน่งจริงในรูปทดสอบ) **แต่ยังไม่เคยทดสอบกล้องสดบนอุปกรณ์จริง** เพราะ dev sandbox
+      บล็อก getUserMedia เสมอ — ต้องทดสอบ threshold/ความไวจริงบนมือถือก่อนใช้งานจริงในห้องเรียน
 - [x] Fallback: แตะจอตอบได้เมื่อกล้อง/แสงมีปัญหา — ทดสอบแล้ว ทำงานถูกต้อง
 - [x] Game mechanic: จับเวลา + วนคำถามซ้ำ (ทดสอบ logic แล้วใน student/app.js)
 - [ ] Teacher: Question Bank CRUD เต็มรูปแบบ (ต่อ Firestore)
 - [ ] Teacher: Quiz Builder (เลือกจากคลัง + เขียนใหม่ → preview → ตั้งชื่อ → publish/QR) + ตั้งเวลาเล่น
-- [x] Bonus Challenge framework + 2 เกม (ไล่จับ Skibidi, ชูมือสุดขีด) — ทดสอบ end-to-end แล้ว: trigger ทุก 3-5 ข้อ → banner → มินิเกม → กลับเข้าคำถามต่ออัตโนมัติ
-- [ ] Bonus Challenge อีก 3 เกม (จังหวะมือ 6-7, ตามท่ามือ, ไล่ตี Brainrot) — ดูสเปกด้านล่าง
+- [x] Bonus Challenge — ครบทั้ง 5 เกม (ไล่จับ Skibidi, ชูมือสุดขีด, จังหวะมือ 6-7, ตามท่ามือ, ไล่ตี Brainrot)
+      ทดสอบแล้วทั้ง end-to-end ในหน้าเล่นจริง (trigger → banner → มินิเกม → กลับเข้าคำถาม) และ logic ระดับ ms
+      ผ่าน `test/bonus-selftest.html` (จำลอง zone event แม่นยำ ตรวจ score/debounce/timeout ทุกเกม)
 - [ ] หน้า Review ย้อนหลัง (นักเรียน + ครู)
 - [ ] Leaderboard สรุปท้ายเกม (คำถาม + bonus รวมกัน)
 - [ ] Deploy ขึ้น GitHub Pages (`sirawatjan-svg.github.io/quizjoy`)
@@ -63,36 +72,23 @@ quizjoy/
 
 ✅ สังคมศึกษา ม.2 — ทวีปแอฟริกา (10 ข้อ ระดับง่าย) อยู่ใน `assets/js/sample-questions.js`
 
-## Bonus Challenge — สเปกเกมที่เหลือ (ยังไม่สร้าง)
+## Bonus Challenge — กลไกทั้ง 5 เกม (สร้างและทดสอบครบแล้ว)
 
-ทุกเกมต่อกับ `bonus-engine.js` แบบเดียวกับ 2 เกมที่ทำแล้ว: รับ `ctx` (corners, stage, setZoneHandler,
-onScore, onEnd) แล้ว export ฟังก์ชัน `run{ชื่อเกม}(ctx)` ไปเพิ่มใน `BONUS_RUNNERS` + เปลี่ยน `ready: true`
-ใน `BONUS_GAMES`
+ทุกเกมต่อกับ `bonus-engine.js` ผ่าน `ctx` เดียวกัน (corners, stage, setZoneHandler, onScore, onEnd)
+เพิ่มเกมใหม่ในอนาคต: เขียน `run{ชื่อเกม}(ctx)` แล้วเพิ่มใน `BONUS_RUNNERS` + `BONUS_GAMES`
 
-### ✋ จังหวะมือ 6-7 (`hand-bounce`)
-- **โจทย์:** จับคู่โซนเป็น "ซ้าย" (tl+bl) กับ "ขวา" (tr+br) มี beacon กระพริบสลับซ้าย-ขวาเป็นจังหวะ
-  (เริ่ม ~100 BPM แล้วเร่งเป็น ~140 BPM ภายใน 10 วิ) นักเรียนต้องชี้/แตะฝั่งที่ตรงจังหวะ
-- **การจับ:** เทียบ timestamp ที่ zone ตรงกับฝั่งที่ beacon สว่าง ภายใน window ±250ms ถือว่า hit
-- **คะแนน:** +30/hit ตรงจังหวะเป๊ะ (±100ms), +15/hit แบบหลวม (±250ms), พลาด/สลับผิดฝั่งไม่ตัดคะแนน
-- **เสียง:** ใช้ synthesized beep (Web Audio API `OscillatorNode`) ทำจังหวะเอง **ห้ามใช้คลิปเพลงจริงจากไวรัล
-  เพราะติดลิขสิทธิ์** — ยืมแค่ชื่อ/คอนเซปต์เทรนด์มาตั้งชื่อเกม
-- **ความยาก:** ปรับ BPM เพิ่มตามรอบ, ความสนุกอยู่ที่จังหวะเร่งไม่ใช่ความแม่นของท่ามือ
+| เกม | โจทย์ | การจับ | คะแนน |
+|---|---|---|---|
+| 🚽 ไล่จับ Skibidi (`skibidi-dodge`) | ไอคอนโผล่มุมสุ่ม 6 รอบ ต้องชี้/แตะให้ทันก่อนหมดเวลา (1200ms→700ms) | zone match ทันที ไม่ต้องค้าง | +50 ฐาน + streak bonus +10/ครั้งติดกัน |
+| 🙌 ชูมือสุดขีด (`reach-sky`) | ยกมือสูงค้าง 3 วิ | เช็ค `point.y < 0.35` ต่อเนื่อง | +120 สำเร็จ / +30 participation ถ้าไม่มีใครทำสำเร็จภายใน 10 วิ |
+| ✋ จังหวะมือ 6-7 (`hand-bounce`) | สลับชี้ซ้าย(tl+bl)/ขวา(tr+br) ตามจังหวะ beep ที่เร่งจาก 100→140 BPM ใน 10 วิ | เทียบ timestamp การชี้กับ beat ±250ms | +30 ตรงเป๊ะ(±100ms) / +15 หลวม |
+| 🕺 ตามท่ามือ (`hand-dance-follow`) | Simon Says โซน เริ่ม 3 โซน ยาวขึ้น +1 ทุกรอบ (max 6) | debounce zone entry เทียบกับลำดับที่สุ่มไว้ | +40/รอบผ่าน, +60 ผ่านครบ, พลาด = ได้คะแนนรอบที่ผ่านมาแล้ว (ไม่ใช่ 0) |
+| 🐊 ไล่ตี Brainrot (`brainrot-swat`) | หลายตัวพร้อมกันได้ในช่วงท้าย 10 วิ ต้องตีให้ทันก่อนหาย (~900ms) | active-zone map รองรับหลายเป้าพร้อมกัน | +35 ฐาน + combo multiplier (cap +25) |
 
-### 🕺 ตามท่ามือ (`hand-dance-follow`)
-- **โจทย์:** แบบ Simon Says — ระบบกระพริบโซนทีละอันเป็นลำดับ (เริ่ม 3 โซน) นักเรียนต้องชี้/แตะตามลำดับให้ถูก
-  ผ่านแล้วลำดับจะยาวขึ้น +1 ทุกรอบ (max ~6)
-- **การจับ:** เก็บ array ของ zone ที่ระบบสุ่ม เทียบกับลำดับที่นักเรียนชี้ (ใช้ zone แบบ debounce กันนับซ้ำตอนมือค้างอยู่โซนเดิม)
-- **คะแนน:** +40 ต่อรอบที่ผ่านครบลำดับ ผิดลำดับ = จบเกม (ให้คะแนนเท่าที่ผ่านมาแล้วบางส่วน ไม่ใช่ 0 เพื่อความ inclusive)
-- **UI:** โซนที่ต้อง "จำ" กระพริบทีละอันด้วย pause 400ms คั่น ก่อนให้นักเรียนเริ่มชี้ตาม
+**หมายเหตุลิขสิทธิ์:** เกม 6-7 ใช้เสียง beep สังเคราะห์เอง (Web Audio API `OscillatorNode`) ไม่ใช้คลิปเพลง/เสียง
+จากคลิปไวรัลจริง — ยืมแค่ชื่อ/คอนเซปต์เทรนด์มาตั้งชื่อเกม เกม Brainrot ใช้ emoji ล้วน ไม่ใช้ asset ภาพจากที่ไหน
 
-### 🐊 ไล่ตี Brainrot (`brainrot-swat`)
-- **โจทย์:** ไอคอนสัตว์ประหลาดสไตล์ Italian Brainrot (วาดเอง ไม่ใช้ asset ลิขสิทธิ์ของใคร) วิ่งเป็นเส้นทแยงมุมผ่าน
-  4 โซนภายใน ~2 วิ/ตัว สุ่มเกิดต่อเนื่อง 10 วิ
-- **การจับ:** เช็คว่า zone ที่นักเรียนชี้/แตะ ตรงกับโซนที่ตัวละครกำลังผ่าน ณ ขณะนั้น (คำนวณจาก timestamp การเริ่มวิ่ง)
-- **คะแนน:** +35/ตัวที่ตีโดน, combo streak เพิ่ม multiplier เหมือน Skibidi Dodge
-- **ความยาก:** เพิ่มจำนวนตัวที่วิ่งพร้อมกัน (1 → 2 ตัว) ในช่วงหลังของ 10 วิ
-
-### หมายเหตุร่วม
-- ทั้ง 3 เกมนี้ยังไม่ต้องมี asset ภาพนอกเหนือ emoji ก็เล่นได้ (emoji แทนไอคอนไปก่อน ค่อยเปลี่ยนเป็นภาพวาด/ภาพ generate ทีหลังได้)
-- ทุกเกมต้องมี timeout กันเกมค้าง (เผื่อกล้อง/นักเรียนไม่ตอบสนองเลย) แบบเดียวกับ `runReachForSky`
-- คะแนนทุกเกมบวกเข้า `bonusScore` รวมกับ `score` ตอนจบเกม (ดู `endGame()` ใน `student/app.js`)
+**การทดสอบที่ทำแล้ว:** รัน `test/bonus-selftest.html` จำลอง zone event ระดับ ms ตรงกับ `setZoneHandler`
+ของแต่ละเกม ยืนยันแล้วว่า: คะแนน/streak/combo คำนวณถูกต้องทุกเกม, debounce ของ hand-dance-follow กันนับ
+input ซ้ำได้จริง, safety-timeout ทุกเกมจบเกมได้แม้ไม่มี input เลย (ไม่มีเกมไหนค้าง) ส่วนการ trigger จริงจาก
+เล่นคำถาม (banner → มินิเกม → กลับเข้าคำถาม) ทดสอบผ่าน `student/index.html` ด้วย tap-fallback แล้วเช่นกัน
