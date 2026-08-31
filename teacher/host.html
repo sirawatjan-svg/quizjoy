@@ -15,6 +15,13 @@
       <p style="color:var(--muted); font-size:0.9rem;">
         ขั้นตอน: เลือกคำถามจากคลัง (หรือเขียนใหม่) → preview ทั้งชุด → ตั้งชื่อควิซ → publish เพื่อสร้าง QR
       </p>
+
+      <label style="display:block; text-align:left; margin-top:12px;">เวลาเล่น (นาที)</label>
+      <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
+      <p style="color:var(--muted); font-size:0.8rem; text-align:left;">
+        เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
+      </p>
+
       <p style="color:var(--muted)">
         ⚠️ ส่วนนี้ยังเป็นโครง — รอเชื่อมต่อ Firestore เพื่อดึงคำถามจากคลังจริง
       </p>
@@ -35,7 +42,8 @@
 
   <script type="module">
     // TODO: เมื่อมี Firebase config แล้ว
-    // 1. สร้าง sessions/{roomCode} doc พร้อม questionIds ที่เลือก
+    // 1. สร้าง sessions/{roomCode} doc พร้อม questionIds ที่เลือก และ durationMinutes จาก #duration-input
+    //    (เกมจบด้วยเวลา ไม่ใช่จำนวนข้อ — ฝั่ง student/app.js วนคำถามซ้ำด้วย modulo จนกว่าจะหมดเวลา)
     // 2. generate QR ชี้ไปที่ ../index.html?room={roomCode} (ใช้ไลบรารี QR แบบ client-side, no external CDN dependency ที่ผิดกฎ CSP ถ้าเป็น artifact — แต่หน้านี้ deploy บน GitHub Pages ปกติ ใช้ CDN ได้)
     // 3. onSnapshot(sessions/{roomCode}/results) -> อัปเดต live-score-list แบบเรียงคะแนนมากไปน้อย
   </script>

@@ -19,6 +19,7 @@
   <!-- หน้าจอเล่นเกมหลัก -->
   <div class="quiz-stage" id="quiz-stage" style="display:none;">
     <video id="camera-feed" class="camera-feed" autoplay playsinline muted></video>
+    <div class="timer-badge" id="timer-badge">05:00</div>
     <div class="question-bar" id="question-text">กำลังรอคำถาม...</div>
 
     <div class="answer-corner tl" id="answer-tl" data-zone="tl">ตัวเลือก A</div>
@@ -28,6 +29,16 @@
 
     <div class="hand-cursor" id="hand-cursor" style="display:none;"></div>
     <div class="hold-progress"><div id="hold-progress-bar"></div></div>
+  </div>
+
+  <!-- หน้าจอหมดเวลา -->
+  <div class="screen" id="end-screen" style="display:none;">
+    <h2>⏰ หมดเวลา!</h2>
+    <div class="panel">
+      <p style="color:var(--muted)">คะแนนของคุณ</p>
+      <p style="font-size:2.5rem; font-weight:800; margin:8px 0;" id="final-score">0</p>
+      <p style="color:var(--muted)" id="final-summary"></p>
+    </div>
   </div>
 
   <script type="module" src="app.js"></script>

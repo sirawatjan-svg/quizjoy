@@ -106,6 +106,23 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   transition: transform 0.15s ease, background 0.2s ease;
 }
 
+.timer-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  background: rgba(15,23,42,0.85);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.timer-badge.low-time {
+  border-color: var(--wrong);
+  color: var(--wrong);
+}
+
 .answer-corner.tl { top: 96px; left: 12px; background: var(--tl); }
 .answer-corner.tr { top: 96px; right: 12px; background: var(--tr); }
 .answer-corner.bl { bottom: 28px; left: 12px; background: var(--bl); }

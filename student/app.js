@@ -1,5 +1,6 @@
 import { startGestureDetection } from "../assets/js/gesture-detection.js";
-// TODO: เมื่อมี Firebase config จริงแล้ว ค่อยเปิดใช้บรรทัดนี้และต่อ sync คำถาม/คะแนน
+import { sampleQuestions } from "../assets/js/sample-questions.js";
+// TODO: เมื่อมี Firebase config จริงแล้ว ค่อยเปิดใช้บรรทัดนี้และต่อ sync คำถาม/คะแนน/เวลาที่ตั้งจากครู
 // import { db, doc, onSnapshot, setDoc, collection } from "../assets/js/firebase-init.js";
 
 const params = new URLSearchParams(location.search);
@@ -13,6 +14,7 @@ if (!room || !studentName) {
 
 const setupScreen = document.getElementById("setup-screen");
 const quizStage = document.getElementById("quiz-stage");
+const endScreen = document.getElementById("end-screen");
 const previewVideo = document.getElementById("preview-video");
 const cameraFeed = document.getElementById("camera-feed");
 const startBtn = document.getElementById("start-btn");
@@ -20,6 +22,9 @@ const setupStatus = document.getElementById("setup-status");
 const handCursor = document.getElementById("hand-cursor");
 const holdProgressBar = document.getElementById("hold-progress-bar");
 const questionText = document.getElementById("question-text");
+const timerBadge = document.getElementById("timer-badge");
+const finalScoreEl = document.getElementById("final-score");
+const finalSummaryEl = document.getElementById("final-summary");
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -28,9 +33,17 @@ const corners = {
   br: document.getElementById("answer-br"),
 };
 
+// --- เกม mechanic: จับเวลา (ค่าเริ่มต้น 5 นาที ครูตั้งได้จาก host.html ในอนาคต) ---
+// TODO: อ่านค่านี้จาก sessions/{room}.durationMinutes แทนค่า hardcode เมื่อต่อ Firestore แล้ว
+const DURATION_MS = 5 * 60 * 1000;
+
 let mediaStream = null;
-let currentQuestion = null; // TODO: มาจาก Firestore sync
+let questionIndex = 0; // วนซ้ำด้วย modulo ความยาวชุดคำถาม ไม่หยุดแม้ตอบครบชุด
+let score = 0;
+let answeredCount = 0;
 let answered = false;
+let gameEndsAt = null;
+let timerInterval = null;
 
 async function setupCamera() {
   try {
@@ -56,11 +69,48 @@ function highlightZone(zone) {
   });
 }
 
-function revealAnswer(selectedZone, correctZone) {
+function clearRevealClasses() {
+  Object.values(corners).forEach((el) => el.classList.remove("correct", "wrong", "active"));
+}
+
+function loadQuestion() {
+  clearRevealClasses();
+  answered = false;
+  holdProgressBar.style.width = "0%";
+
+  const q = sampleQuestions[questionIndex % sampleQuestions.length];
+  questionText.textContent = q.text;
+  corners.tl.textContent = q.options.tl;
+  corners.tr.textContent = q.options.tr;
+  corners.bl.textContent = q.options.bl;
+  corners.br.textContent = q.options.br;
+  quizStage.dataset.correctZone = q.correctZone;
+}
+
+function nextQuestion() {
+  questionIndex += 1; // เมื่อครบชุด (10 ข้อ) จะวนกลับไปข้อแรกอัตโนมัติด้วย modulo
+  loadQuestion();
+}
+
+function submitAnswer(zone) {
+  if (answered || !gameEndsAt) return;
+  answered = true;
+  answeredCount += 1;
+
+  const correctZone = quizStage.dataset.correctZone;
+  const isCorrect = zone === correctZone;
+  if (isCorrect) score += 100; // TODO: ให้คะแนนตามความเร็วในการตอบ เหมือน Kahoot
+
   Object.entries(corners).forEach(([key, el]) => {
     if (key === correctZone) el.classList.add("correct");
-    else if (key === selectedZone) el.classList.add("wrong");
+    else if (key === zone) el.classList.add("wrong");
   });
+
+  // TODO: เขียนคำตอบลง Firestore sessions/{room}/results/{studentId}.answers[]
+
+  setTimeout(() => {
+    if (Date.now() < gameEndsAt) nextQuestion();
+  }, 1200); // เผื่อเวลาให้เห็นเฉลยก่อนขึ้นข้อถัดไป
 }
 
 function onZoneUpdate({ zone, point, progress, confirmed }) {
@@ -83,14 +133,31 @@ function onZoneUpdate({ zone, point, progress, confirmed }) {
   }
 }
 
-function submitAnswer(zone) {
-  if (answered || !currentQuestion) return;
-  answered = true;
+function formatTime(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
-  // TODO: เขียนคำตอบลง Firestore sessions/{room}/results/{studentId}
-  // แล้วรอ server-confirmed correctZone กลับมา (กันการโกงฝั่ง client)
-  const correctZone = currentQuestion.correctZone; // ชั่วคราว ใช้ค่าจาก client เพื่อทดสอบ UI
-  revealAnswer(zone, correctZone);
+function tickTimer() {
+  const remaining = gameEndsAt - Date.now();
+  timerBadge.textContent = formatTime(remaining);
+  timerBadge.classList.toggle("low-time", remaining <= 30000);
+
+  if (remaining <= 0) {
+    endGame();
+  }
+}
+
+function endGame() {
+  clearInterval(timerInterval);
+  quizStage.style.display = "none";
+  endScreen.style.display = "flex";
+  finalScoreEl.textContent = score;
+  finalSummaryEl.textContent = `ตอบไปทั้งหมด ${answeredCount} ข้อ`;
+  // TODO: บันทึกคะแนนสุดท้ายลง Firestore + แสดง leaderboard รวมทั้งห้อง
+  // TODO: เปิดปุ่ม "ดูเฉลยย้อนหลัง" ไปหน้า review ต่อจากตรงนี้
 }
 
 // --- Tap-to-answer fallback (กันกรณีกล้อง/แสงมีปัญหา) ---
@@ -106,17 +173,10 @@ startBtn.addEventListener("click", async () => {
     startGestureDetection(cameraFeed, onZoneUpdate);
   }
 
-  // TODO: subscribe คำถามจาก Firestore แทนของ mock นี้
-  currentQuestion = {
-    text: "ตัวอย่างคำถาม: เมืองหลวงเก่าของไทยก่อนกรุงเทพฯ คือเมืองใด?",
-    options: { tl: "สุโขทัย", tr: "อยุธยา", bl: "เชียงใหม่", br: "นครปฐม" },
-    correctZone: "tr",
-  };
-  questionText.textContent = currentQuestion.text;
-  corners.tl.textContent = currentQuestion.options.tl;
-  corners.tr.textContent = currentQuestion.options.tr;
-  corners.bl.textContent = currentQuestion.options.bl;
-  corners.br.textContent = currentQuestion.options.br;
+  gameEndsAt = Date.now() + DURATION_MS;
+  loadQuestion();
+  tickTimer();
+  timerInterval = setInterval(tickTimer, 250);
 });
 
 setupCamera();
