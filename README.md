@@ -11,9 +11,10 @@ Kahoot-style ควิซแบบ Interactive Camera Quiz — นักเร�
 
 ## สถานะ
 
-✅ **ระบบหลักทำงานจบ end-to-end แล้วด้วยข้อมูลจริง** — คลังข้อสอบ → สร้างห้อง/QR → นักเรียนเข้าเล่น → คะแนน
-sync สดกลับมาที่ครู → จบเกมด้วยเวลา ทดสอบจริงผ่าน Firestore project `quizjoy-3d136` (ไม่ใช่ mock)
-ที่ยังไม่ทำ: หน้า Review ย้อนหลัง, security rules แบบใช้งานจริง, ทดสอบกล้องบนมือถือจริง
+✅ **ระบบหลักทำงานจบ end-to-end แล้วด้วยข้อมูลจริง พร้อม auth + security rules ใช้งานจริง** — ครู login
+(Firebase Auth) → คลังข้อสอบ → สร้างห้อง/QR → นักเรียนเข้าเล่นโดยไม่ต้อง login → คะแนน sync สดกลับมาที่ครู →
+จบเกมด้วยเวลา ทดสอบจริงผ่าน Firestore project `quizjoy-3d136` (ไม่ใช่ mock) ทั้งสอง direction (auth บล็อกคน
+ไม่ login / อนุญาตคน login แล้ว) ที่ยังไม่ทำ: หน้า Review ย้อนหลัง, ทดสอบกล้องบนมือถือจริง
 
 ## สถาปัตยกรรม
 
@@ -24,14 +25,17 @@ quizjoy/
 │   ├── index.html          # หน้าเล่นเกมหลัก (คำถาม + 4 มุม + กล้อง + timer)
 │   └── app.js               # logic: join room, timer/loop mechanic, gesture detection
 ├── teacher/
-│   ├── index.html          # เมนูหลักของครู
-│   ├── question-bank.html  # คลังข้อสอบ (สร้าง/แก้ไข/ค้นหา)
-│   ├── host.html            # สร้างห้อง/ตั้งเวลาเล่น/เริ่มเกม/QR/monitor คะแนนสด
-│   └── review.html          # ดูผลย้อนหลังทั้งห้อง + รายบุคคล
+│   ├── login.html          # เข้าสู่ระบบ/สมัครครู (Firebase Auth email+password)
+│   ├── index.html          # เมนูหลักของครู (guarded — เด้งไป login.html ถ้ายังไม่ login)
+│   ├── question-bank.html  # คลังข้อสอบ (สร้าง/แก้ไข/ค้นหา) — guarded
+│   ├── host.html            # สร้างห้อง/ตั้งเวลาเล่น/เริ่มเกม/QR/monitor คะแนนสด — guarded
+│   └── review.html          # ดูผลย้อนหลังทั้งห้อง + รายบุคคล — guarded (ยังเป็นสตับ)
+├── firestore.rules          # Security rules ใช้งานจริง — publish แล้วในโปรเจกต์จริง
 └── assets/
     ├── js/
-    │   ├── firebase-config.js   # ← ใส่ config จริงตรงนี้เมื่อได้จากผู้ใช้
-    │   ├── firebase-init.js     # init Firebase app (Firestore)
+    │   ├── firebase-config.js   # config จริงของโปรเจกต์ quizjoy-3d136
+    │   ├── firebase-init.js     # init Firebase app (Firestore + Auth)
+    │   ├── auth-guard.js        # requireAuth()/wireLogoutButton() ใช้ร่วมกันทุกหน้าครู
     │   ├── gesture-detection.js # MediaPipe HandLandmarker wrapper (v1.0.1, GPU→CPU fallback, smoothing)
     │   ├── bonus-engine.js      # Bonus Challenge: shuffle-bag picker + 5 เกมพร้อมใช้ทั้งหมด
     │   └── sample-questions.js  # ชุดคำถามทดสอบ: สังคมศึกษา ทวีปแอฟริกา (10 ข้อ)
@@ -57,10 +61,13 @@ test/
 
 - [x] รับ Firebase config จากผู้ใช้ → ใส่ใน `assets/js/firebase-config.js` แล้ว (project: `quizjoy-3d136`)
       **ยืนยันแล้วว่าเชื่อมต่อ Firestore จริงได้** — เขียน/อ่าน doc ทดสอบสำเร็จผ่าน `test/firestore-selftest.html`
-- [x] Firestore Database สร้างแล้ว (Standard edition, test mode, asia-southeast1) — ใช้ได้ถึง 30 ก.ย. 2026
-      ก่อนหมดอายุต้องตั้ง security rules ที่รัดกุมกว่า test mode (ดู TODO ถัดไป)
-- [ ] ตั้ง Firestore security rules แบบใช้งานจริง (ก่อน 30 ก.ย. 2026 ที่ test mode หมดอายุ) — ตอนนี้ยังไม่มีระบบ
-      login ครู (Firebase Auth) เลย เขียน rules แบบจำกัดสิทธิ์เฉพาะครูจริงๆ ไม่ได้จนกว่าจะมี auth ก่อน
+- [x] Firestore Database สร้างแล้ว (Standard edition, asia-southeast1)
+- [x] Firebase Auth (Email/Password) เปิดใช้งานแล้ว — ระบบ login ครูใน `teacher/login.html` + auth guard
+      ทุกหน้าครู ทดสอบแล้วครบ: สมัคร/login/logout/redirect เมื่อไม่ login
+- [x] Firestore Security Rules ใช้งานจริงแล้ว (`firestore.rules`, publish แล้วในโปรเจกต์จริง — ไม่ใช่ test mode
+      อีกต่อไป) **ยืนยันทั้ง 2 ทิศทางแล้ว**: ไม่ login → เขียน questionBank โดนบล็อก (permission-denied);
+      login แล้ว → เขียนได้ปกติ; นักเรียนไม่ต้อง login ก็ join ห้อง/เขียนคะแนนได้ตามดีไซน์ (ยืนยันด้วยการอ่าน
+      ค่ากลับจาก Firestore ตรงๆ ไม่ใช่แค่ดู UI)
 - [x] Integrate MediaPipe HandLandmarker (`gesture-detection.js`) — v1.0.1, GPU→CPU delegate fallback,
       confidence threshold, dead-zone, smoothing (EMA), `onError` callback ให้ fallback ไป tap ได้เอง
       **ยืนยันแล้วว่า pipeline โหลด/รัน inference ถูกต้อง** (`test/mediapipe-selftest.html` — เจอมือ 21
