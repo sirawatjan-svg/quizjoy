@@ -1,5 +1,6 @@
 import { startGestureDetection } from "../assets/js/gesture-detection.js";
 import { sampleQuestions } from "../assets/js/sample-questions.js";
+import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
 // TODO: เมื่อมี Firebase config จริงแล้ว ค่อยเปิดใช้บรรทัดนี้และต่อ sync คำถาม/คะแนน/เวลาที่ตั้งจากครู
 // import { db, doc, onSnapshot, setDoc, collection } from "../assets/js/firebase-init.js";
 
@@ -25,6 +26,10 @@ const questionText = document.getElementById("question-text");
 const timerBadge = document.getElementById("timer-badge");
 const finalScoreEl = document.getElementById("final-score");
 const finalSummaryEl = document.getElementById("final-summary");
+const bonusBanner = document.getElementById("bonus-banner");
+const bonusEmoji = document.getElementById("bonus-emoji");
+const bonusTitle = document.getElementById("bonus-title");
+const bonusSub = document.getElementById("bonus-sub");
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -40,10 +45,21 @@ const DURATION_MS = 5 * 60 * 1000;
 let mediaStream = null;
 let questionIndex = 0; // วนซ้ำด้วย modulo ความยาวชุดคำถาม ไม่หยุดแม้ตอบครบชุด
 let score = 0;
+let bonusScore = 0;
 let answeredCount = 0;
 let answered = false;
 let gameEndsAt = null;
 let timerInterval = null;
+
+// --- Bonus Challenge state ---
+let mode = "quiz"; // "quiz" | "bonus"
+let bonusZoneHandler = null; // ผูกโดย bonus-engine ผ่าน ctx.setZoneHandler
+let answeredSinceBonus = 0;
+let bonusThreshold = randomBonusThreshold();
+
+function randomBonusThreshold() {
+  return 3 + Math.floor(Math.random() * 3); // สุ่ม 3-5 ข้อ
+}
 
 async function setupCamera() {
   try {
@@ -70,7 +86,7 @@ function highlightZone(zone) {
 }
 
 function clearRevealClasses() {
-  Object.values(corners).forEach((el) => el.classList.remove("correct", "wrong", "active"));
+  Object.values(corners).forEach((el) => el.classList.remove("correct", "wrong", "active", "target"));
 }
 
 function loadQuestion() {
@@ -92,10 +108,54 @@ function nextQuestion() {
   loadQuestion();
 }
 
+function showBonusToast(text) {
+  const toast = document.createElement("div");
+  toast.className = "bonus-toast";
+  toast.textContent = text;
+  quizStage.appendChild(toast);
+  setTimeout(() => toast.remove(), 1400);
+}
+
+function triggerBonusChallenge() {
+  mode = "bonus";
+  clearRevealClasses();
+  questionText.textContent = "";
+
+  const game = nextBonusGame();
+  bonusEmoji.textContent = game.emoji;
+  bonusTitle.textContent = game.name;
+  bonusSub.textContent = "ภารกิจพิเศษ! เตรียมตัว...";
+  bonusBanner.style.display = "flex";
+
+  setTimeout(() => {
+    bonusBanner.style.display = "none";
+    if (Date.now() >= gameEndsAt) return; // เวลาหมดพอดีระหว่าง banner โชว์
+
+    const runner = BONUS_RUNNERS[game.id];
+    runner({
+      corners,
+      stage: quizStage,
+      setZoneHandler: (fn) => {
+        bonusZoneHandler = fn;
+      },
+      onScore: (delta) => {
+        bonusScore += delta;
+        showBonusToast(`+${delta}`);
+      },
+      onEnd: () => {
+        mode = "quiz";
+        bonusZoneHandler = null;
+        if (Date.now() < gameEndsAt) nextQuestion();
+      },
+    });
+  }, 1800);
+}
+
 function submitAnswer(zone) {
-  if (answered || !gameEndsAt) return;
+  if (mode !== "quiz" || answered || !gameEndsAt) return;
   answered = true;
   answeredCount += 1;
+  answeredSinceBonus += 1;
 
   const correctZone = quizStage.dataset.correctZone;
   const isCorrect = zone === correctZone;
@@ -109,11 +169,24 @@ function submitAnswer(zone) {
   // TODO: เขียนคำตอบลง Firestore sessions/{room}/results/{studentId}.answers[]
 
   setTimeout(() => {
-    if (Date.now() < gameEndsAt) nextQuestion();
-  }, 1200); // เผื่อเวลาให้เห็นเฉลยก่อนขึ้นข้อถัดไป
+    if (Date.now() >= gameEndsAt) return;
+
+    if (answeredSinceBonus >= bonusThreshold) {
+      answeredSinceBonus = 0;
+      bonusThreshold = randomBonusThreshold();
+      triggerBonusChallenge();
+    } else {
+      nextQuestion();
+    }
+  }, 1200); // เผื่อเวลาให้เห็นเฉลยก่อนขึ้นข้อถัดไป/บอนัส
 }
 
 function onZoneUpdate({ zone, point, progress, confirmed }) {
+  if (mode === "bonus") {
+    bonusZoneHandler?.({ zone, point });
+    return;
+  }
+
   if (answered) return;
 
   highlightZone(zone);
@@ -154,13 +227,13 @@ function endGame() {
   clearInterval(timerInterval);
   quizStage.style.display = "none";
   endScreen.style.display = "flex";
-  finalScoreEl.textContent = score;
-  finalSummaryEl.textContent = `ตอบไปทั้งหมด ${answeredCount} ข้อ`;
+  finalScoreEl.textContent = score + bonusScore;
+  finalSummaryEl.textContent = `ตอบไป ${answeredCount} ข้อ (คะแนนคำถาม ${score} + คะแนนโบนัส ${bonusScore})`;
   // TODO: บันทึกคะแนนสุดท้ายลง Firestore + แสดง leaderboard รวมทั้งห้อง
   // TODO: เปิดปุ่ม "ดูเฉลยย้อนหลัง" ไปหน้า review ต่อจากตรงนี้
 }
 
-// --- Tap-to-answer fallback (กันกรณีกล้อง/แสงมีปัญหา) ---
+// --- Tap-to-answer fallback (กันกรณีกล้อง/แสงมีปัญหา) — mode guard กันชนกับ listener ของ bonus game ---
 Object.entries(corners).forEach(([zone, el]) => {
   el.addEventListener("click", () => submitAnswer(zone));
 });
