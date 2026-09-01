@@ -21,6 +21,13 @@
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>🚀 สร้างห้อง / เริ่มเกม</h1>
 
+    <div class="panel" id="localhost-warning" style="display:none; border: 2px solid var(--wrong); background: rgba(239,68,68,0.1);">
+      ⚠️ <strong>กำลังเปิดหน้านี้จากเครื่องทดสอบ (localhost)</strong> — QR ที่จะสร้างจะใช้ไม่ได้กับมือถือเครื่องอื่น
+      เพราะมือถือเข้า "localhost" ของตัวเองไม่เจอเซิร์ฟเวอร์นี้ ให้เปิดหน้านี้จาก
+      <a href="https://sirawatjan-svg.github.io/quizjoy/teacher/host.html" style="color:var(--accent)">เว็บจริงที่ deploy แล้ว</a>
+      แทนก่อนสร้างห้องสำหรับเล่นจริงในห้องเรียน
+    </div>
+
     <div class="panel" id="setup-panel">
       <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
       <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
@@ -73,6 +80,9 @@
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        document.getElementById("localhost-warning").style.display = "block";
+      }
       init();
     });
 
