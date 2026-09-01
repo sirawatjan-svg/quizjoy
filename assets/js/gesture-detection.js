@@ -85,6 +85,31 @@ async function loadModels({ bodySkeleton }) {
 const HYSTERESIS_MARGIN = 0.07;
 let lastZone = null;
 
+// --- Calibration ---
+// จุดศูนย์กลางที่ใช้แบ่งจอเป็น 4 โซน ปกติคือกึ่งกลางจอ (0.5, 0.5) เป๊ะๆ แต่จากข้อมูลทดสอบจริงบนมือถือ
+// หลายเครื่อง (ดู backup-test-data/) พบว่า "ชี้บน" มักถูกจับว่าเป็น "ล่าง" บ่อยผิดปกติ (tl→bl, tr→br
+// เป็นสัดส่วนสูงสุดของคำตอบผิดทั้งหมด) เพราะท่าถือมือถือ/มุมกล้องจริงทำให้นิ้วที่ชี้ "มุมบน" ของจอ ไม่เคย
+// ขยับสูงพอจะข้ามเส้นกึ่งกลาง Y ที่ตายตัวไว้ล่วงหน้า — ให้ผู้เล่น calibrate ก่อนเล่น (ชี้ 4 มุมจริงครั้งละ
+// มุม ดู runCalibration ใน student/app.js) แล้วเรียก setCalibration() ขยับจุดศูนย์กลางให้ตรงกับตำแหน่งจริง
+// ที่มือของคนๆ นั้นไปถึง แทนที่จะเดาว่ากึ่งกลางจอคือกึ่งกลางระหว่างมุมทั้งสี่เสมอ
+let calibCx = 0.5;
+let calibCy = 0.5;
+
+export function setCalibration(cx, cy) {
+  calibCx = cx;
+  calibCy = cy;
+}
+
+export function getCalibration() {
+  return { cx: calibCx, cy: calibCy };
+}
+
+// รีเซ็ตกลับเป็นค่าเริ่มต้น (กึ่งกลางจอเป๊ะๆ) — ใช้ตอนข้าม calibration หรือระหว่างเทส
+export function resetCalibration() {
+  calibCx = 0.5;
+  calibCy = 0.5;
+}
+
 // นาฬิกาจับเวลา "ค้างชี้นานพอหรือยัง" — ต้องอยู่ระดับโมดูล (ไม่ใช่ตัวแปรในฟังก์ชัน) เพราะต้องรีเซ็ตได้
 // จากภายนอกทุกครั้งที่ขึ้นคำถามใหม่ ไม่งั้นเวลาค้างจากคำถามก่อนหน้าจะไหลต่อเนื่องข้ามคำถาม — ถ้ามือดัน
 // พักอยู่โซนเดิมพอดีตอนคำถามใหม่ขึ้น จะกลายเป็น "ตอบให้เลยทันที" ทั้งที่ยังไม่ได้ตั้งใจชี้ข้อนั้นเลย
@@ -95,8 +120,8 @@ let zoneStartTs = 0;
 // export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) — ตัวแอปจริงเรียกผ่าน
 // startGestureDetection เท่านั้น ไม่ได้เรียก pointToZone ตรงๆ
 export function pointToZone(mx, y) {
-  const dx = mx - 0.5;
-  const dy = y - 0.5;
+  const dx = mx - calibCx;
+  const dy = y - calibCy;
   const candidate = dx < 0 ? (dy < 0 ? "tl" : "bl") : dy < 0 ? "tr" : "br";
 
   if (lastZone && candidate !== lastZone) {

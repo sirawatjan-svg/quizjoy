@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calibration Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Calibration Self-Test</h1>
+  <p>ทดสอบว่า setCalibration() ขยับจุดศูนย์กลางของ pointToZone() ได้จริง และแก้ปัญหา
+     "ชี้บนแต่ถูกจับเป็นล่าง" ตามที่พบจากข้อมูลทดสอบจริง (backup-test-data/)</p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import {
+      pointToZone,
+      resetZoneTracking,
+      setCalibration,
+      getCalibration,
+      resetCalibration,
+    } from "../assets/js/gesture-detection.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = actual === expected;
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}: ได้ "${actual}" (คาดหวัง "${expected}")`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    // ค่าเริ่มต้นต้องเป็นกึ่งกลางจอเป๊ะๆ (0.5, 0.5) ไม่กระทบเทสเก่าที่ไม่รู้จัก calibration
+    resetCalibration();
+    const initial = getCalibration();
+    check("ค่าเริ่มต้น cx", initial.cx, 0.5);
+    check("ค่าเริ่มต้น cy", initial.cy, 0.5);
+
+    resetZoneTracking();
+    check("ก่อน calibrate: จุด y=0.42 (เหนือกึ่งกลางนิดเดียว) ต้องเป็น tl", pointToZone(0.3, 0.42), "tl");
+
+    resetZoneTracking();
+    check("ก่อน calibrate: จุด y=0.55 (ใต้กึ่งกลาง) ต้องกลายเป็น bl (จำลองบั๊กที่พบจริง)", pointToZone(0.3, 0.55), "bl");
+
+    // จำลองผลจาก calibration จริง: นักเรียนคนนี้เวลาชี้ "บน" มือจะไปได้แค่ y~0.55 เป็นอย่างมาก
+    // (ไม่เคยข้ามเส้น 0.5 เดิม) — ระบบควรขยับจุดศูนย์กลาง Y ลงไปทาง 0.6 แทน
+    setCalibration(0.5, 0.6);
+    const afterCalib = getCalibration();
+    check("หลัง setCalibration(0.5, 0.6): cx", afterCalib.cx, 0.5);
+    check("หลัง setCalibration(0.5, 0.6): cy", afterCalib.cy, 0.6);
+
+    resetZoneTracking();
+    check("หลัง calibrate: จุด y=0.55 เดิม (เคยกลายเป็น bl) ตอนนี้ต้องกลับมาเป็น tl", pointToZone(0.3, 0.55), "tl");
+
+    resetZoneTracking();
+    check("หลัง calibrate: จุด y=0.7 (ชัดว่าล่างจริงๆ) ต้องยังเป็น bl เหมือนเดิม", pointToZone(0.3, 0.7), "bl");
+
+    // hysteresis ต้องยังทำงานปกติรอบจุดศูนย์กลางใหม่ (ไม่ใช่รอบ 0.5 เดิม)
+    resetZoneTracking();
+    pointToZone(0.3, 0.55); // ยืนที่ tl (ใต้ 0.6 นิดเดียว)
+    check("hysteresis รอบจุดศูนย์กลางใหม่: ขยับเข้าใกล้ 0.6 อีกนิด ไม่ควรสลับโซน", pointToZone(0.3, 0.61), "tl");
+
+    // reset กลับค่าเริ่มต้น ต้องใช้ได้จริง (กันเทสอื่นๆ ที่รันไฟล์นี้ซ้ำ หรือหน้าจอข้าม calibration)
+    resetCalibration();
+    const reset = getCalibration();
+    check("resetCalibration() คืนค่าเป็น 0.5/0.5", reset.cx === 0.5 && reset.cy === 0.5, true);
+
+    resetZoneTracking();
+    check("หลัง resetCalibration: จุด y=0.55 กลับไปเป็น bl เหมือนพฤติกรรมเดิม", pointToZone(0.3, 0.55), "bl");
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

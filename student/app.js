@@ -1,4 +1,4 @@
-import { startGestureDetection, resetHoldTimer } from "../assets/js/gesture-detection.js";
+import { startGestureDetection, resetHoldTimer, setCalibration } from "../assets/js/gesture-detection.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
 import { db, doc, getDoc, setDoc, serverTimestamp, arrayUnion } from "../assets/js/firebase-init.js";
 
@@ -34,6 +34,7 @@ const bonusEmoji = document.getElementById("bonus-emoji");
 const bonusTitle = document.getElementById("bonus-title");
 const bonusSub = document.getElementById("bonus-sub");
 const perfBadge = document.getElementById("perf-badge");
+const calibSkipBtn = document.getElementById("calib-skip-btn");
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -63,10 +64,85 @@ let prepTimeout = null;
 let prepCountdownInterval = null;
 
 // --- Bonus Challenge state ---
-let mode = "quiz"; // "quiz" | "bonus"
+let mode = "quiz"; // "quiz" | "bonus" | "calib"
 let bonusZoneHandler = null; // ผูกโดย bonus-engine ผ่าน ctx.setZoneHandler
 let answeredSinceBonus = 0;
 let bonusThreshold = randomBonusThreshold();
+
+// --- Calibration: ก่อนเริ่มเล่นจริง ให้ชี้ 4 มุมจริงคนละครั้ง แล้วใช้ตำแหน่งที่มือไปถึงจริงๆ มาขยับ
+// จุดศูนย์กลางที่ใช้แบ่งโซน แทนที่จะเดาว่ากึ่งกลางจอ (0.5, 0.5) คือกึ่งกลางระหว่างมุมทั้งสี่เสมอ — จากข้อมูล
+// ทดสอบจริง (backup-test-data/) พบว่าอันนี้เป็นสาเหตุหลักของ "ชี้บนแต่ตอบเป็นล่าง" บนมือถือบางเครื่อง
+// สำคัญ: ตั้งใจ "ไม่" ใช้ zone/hold-timer ของ gesture-detection.js เดิมมาช่วยจับจังหวะตอน calibrate เพราะ
+// ระบบ zone เดิมมีจุดศูนย์กลางที่ยังไม่ calibrate (นี่แหละคือของที่กำลังจะแก้) ถ้าใช้มันมาคุมเวลาค้าง จะเกิด
+// วนซ้ำ (ชี้บนจริงแต่ zone สลับเป็น "ล่าง" ไปมา ทำให้ hold ไม่มีวันครบ) — ใช้นาฬิกาจับเวลานิ่งๆ ของตัวเองแทน
+const CALIB_STEPS = ["tl", "tr", "bl", "br"];
+const CALIB_LABELS = { tl: "มุมบนซ้าย", tr: "มุมบนขวา", bl: "มุมล่างซ้าย", br: "มุมล่างขวา" };
+const CALIB_HOLD_MS = 1200;
+let calibIndex = 0;
+let calibPoints = {};
+let calibCaptured = false;
+let calibStepStartTs = 0;
+
+function startCalibration() {
+  mode = "calib";
+  calibIndex = 0;
+  calibPoints = {};
+  prepCountdown.style.display = "none";
+  calibSkipBtn.style.display = "block";
+  Object.values(corners).forEach((el) => {
+    el.classList.remove("prep-hidden", "reveal-in", "correct", "wrong");
+  });
+  showCalibStep();
+}
+
+function showCalibStep() {
+  const zone = CALIB_STEPS[calibIndex];
+  calibCaptured = false;
+  calibStepStartTs = performance.now();
+  questionLabel.textContent = `🎯 ปรับเทียบตำแหน่งมือ (${calibIndex + 1}/${CALIB_STEPS.length})`;
+  questionText.textContent = `ชี้ไปที่ ${CALIB_LABELS[zone]} ของจอ แล้วค้างไว้นิ่งๆ`;
+  holdProgressBar.style.width = "0%";
+  Object.entries(corners).forEach(([key, el]) => {
+    el.textContent = key === zone ? "👉 ชี้ตรงนี้" : "";
+    el.classList.toggle("target", key === zone);
+    el.classList.toggle("calib-dim", key !== zone);
+  });
+}
+
+function finishCalibration() {
+  calibSkipBtn.style.display = "none";
+  const p = calibPoints;
+  if (p.tl && p.tr && p.bl && p.br) {
+    const leftX = (p.tl.x + p.bl.x) / 2;
+    const rightX = (p.tr.x + p.br.x) / 2;
+    const topY = (p.tl.y + p.tr.y) / 2;
+    const bottomY = (p.bl.y + p.br.y) / 2;
+    const cx = (leftX + rightX) / 2;
+    const cy = (topY + bottomY) / 2;
+    // กันค่าผิดปกติ (เช่น มือหลุดเฟรมกลางคันแล้วจับจุดสุดขอบมาเป็นค่า calibrate) ไม่ให้แย่กว่าค่าเริ่มต้น
+    const safeCx = Number.isFinite(cx) && cx > 0.15 && cx < 0.85 ? cx : 0.5;
+    const safeCy = Number.isFinite(cy) && cy > 0.15 && cy < 0.85 && bottomY > topY ? cy : 0.5;
+    setCalibration(safeCx, safeCy);
+  }
+  Object.values(corners).forEach((el) => el.classList.remove("target", "calib-dim"));
+  beginQuiz();
+}
+
+function skipCalibration() {
+  calibSkipBtn.style.display = "none";
+  Object.values(corners).forEach((el) => el.classList.remove("target", "calib-dim"));
+  beginQuiz();
+}
+
+calibSkipBtn.addEventListener("click", skipCalibration);
+
+function beginQuiz() {
+  mode = "quiz";
+  gameEndsAt = Date.now() + sessionData.durationMinutes * 60 * 1000;
+  loadQuestion();
+  tickTimer();
+  timerInterval = setInterval(tickTimer, 250);
+}
 
 function randomBonusThreshold() {
   return 3 + Math.floor(Math.random() * 3); // สุ่ม 3-5 ข้อ
@@ -354,6 +430,25 @@ function onZoneUpdate(frame) {
     handCursor.style.display = "none";
   }
 
+  if (mode === "calib") {
+    if (point) {
+      const elapsed = performance.now() - calibStepStartTs;
+      holdProgressBar.style.width = `${Math.min(elapsed / CALIB_HOLD_MS, 1) * 100}%`;
+      if (!calibCaptured && elapsed >= CALIB_HOLD_MS) {
+        calibCaptured = true;
+        calibPoints[CALIB_STEPS[calibIndex]] = { x: point.x, y: point.y };
+        calibIndex += 1;
+        if (calibIndex >= CALIB_STEPS.length) finishCalibration();
+        else showCalibStep();
+      }
+    } else {
+      // มือหลุดเฟรมระหว่าง calibrate — รีเซ็ตนาฬิกาขั้นตอนนี้ใหม่ ไม่งั้นจะนับเวลาที่มือไม่อยู่ไปด้วย
+      calibStepStartTs = performance.now();
+      holdProgressBar.style.width = "0%";
+    }
+    return;
+  }
+
   if (mode === "bonus") {
     bonusZoneHandler?.({ zone, point });
     return;
@@ -461,12 +556,12 @@ startBtn.addEventListener("click", async () => {
         showBonusToast("โหมดชี้มือใช้ไม่ได้ตอนนี้ — แตะจอตอบแทนได้เลย");
       },
     });
+    // มีกล้อง -> ให้ calibrate ก่อนเริ่มจับเวลาจริง (ไม่งั้นเวลาเล่นจะเสียไปกับขั้นตอนปรับเทียบ)
+    startCalibration();
+  } else {
+    // ไม่มีกล้อง (ขอสิทธิ์ไม่สำเร็จ) — ไม่มี gesture ให้ calibrate อยู่แล้ว ข้ามไปเล่นด้วยการแตะจอเลย
+    beginQuiz();
   }
-
-  gameEndsAt = Date.now() + sessionData.durationMinutes * 60 * 1000;
-  loadQuestion();
-  tickTimer();
-  timerInterval = setInterval(tickTimer, 250);
 });
 
 startBtn.disabled = true;
