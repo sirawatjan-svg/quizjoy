@@ -4,12 +4,14 @@
 //
 // วิธีเพิ่มเกมใหม่: เพิ่ม entry ใน BONUS_GAMES แล้วเขียนฟังก์ชัน run{ชื่อเกม}(ctx) ที่มี signature เดียวกัน
 
+// ตัดเหลือแค่เกม "67" เกมเดียวตามที่ครูขอ (บอกว่าเกมอื่นดูรก/ไม่สนุกเท่า) — เกมที่เหลือยังอยู่ในโค้ด
+// เต็มรูปแบบ แค่ตั้ง ready:false ไว้ก่อน เปลี่ยนกลับเป็น true ได้ทันทีถ้าอยากเปิดใช้อีกทีในอนาคต
 export const BONUS_GAMES = [
-  { id: "skibidi-dodge", name: "ไล่จับ Skibidi!", emoji: "🚽", ready: true },
-  { id: "reach-sky", name: "ชูมือสุดขีด!", emoji: "🙌", ready: true },
+  { id: "skibidi-dodge", name: "ไล่จับ Skibidi!", emoji: "🚽", ready: false },
+  { id: "reach-sky", name: "ชูมือสุดขีด!", emoji: "🙌", ready: false },
   { id: "hand-bounce", name: "จังหวะมือ 6-7", emoji: "✋", ready: true },
-  { id: "hand-dance-follow", name: "ตามท่ามือ", emoji: "🕺", ready: true },
-  { id: "brainrot-swat", name: "ไล่ตี Brainrot!", emoji: "🐊", ready: true },
+  { id: "hand-dance-follow", name: "ตามท่ามือ", emoji: "🕺", ready: false },
+  { id: "brainrot-swat", name: "ไล่ตี Brainrot!", emoji: "🐊", ready: false },
 ];
 
 let bag = [];
