@@ -193,22 +193,25 @@ export function runReachForSky(ctx) {
 
 // ============ เกม 3: จังหวะมือ 6-7 (สลับซ้าย-ขวาให้ตรงจังหวะ, BPM เร่งขึ้นเรื่อยๆ) ============
 // หมายเหตุลิขสิทธิ์: ใช้เสียง beep สังเคราะห์เอง (Web Audio API) ไม่ใช้คลิปเพลง/เสียงจากคลิปไวรัลจริง
+//
+// v2: เปลี่ยนจาก "ชี้ซ้าย/ขวา" เป็น "ยกมือขึ้น-ลง" ตามฟีดแบ็กครู — ตรงกับท่าจริงของเทรนด์ 6-7
+// (ท่าเหมือนตาชั่ง ยกมือสลับขึ้น-ลง ไม่ใช่ชี้ซ้ายขวา) ใช้โซนบน (tl+tr) แทน "ขึ้น" และโซนล่าง (bl+br) แทน "ลง"
 export function runHandBounce(ctx) {
   const { corners, onScore, onEnd } = ctx;
   const DURATION_MS = 10000;
   const START_BPM = 100;
   const END_BPM = 140;
-  const leftZones = ["tl", "bl"];
-  const rightZones = ["tr", "br"];
+  const upZones = ["tl", "tr"];
+  const downZones = ["bl", "br"];
 
-  let side = "left";
+  let side = "up";
   let beatTime = 0;
   let beatScored = false;
   let beatTimeout = null;
   const startTime = performance.now();
   let audioCtx = null;
 
-  resetCornerLabels(corners, { tl: "⬅️", bl: "⬅️", tr: "➡️", br: "➡️" });
+  resetCornerLabels(corners, { tl: "⬆️", tr: "⬆️", bl: "⬇️", br: "⬇️" });
 
   function cleanup() {
     clearTimeout(beatTimeout);
@@ -235,7 +238,7 @@ export function runHandBounce(ctx) {
 
   function highlightSide(activeSide) {
     Object.entries(corners).forEach(([zone, el]) => {
-      const zoneSide = leftZones.includes(zone) ? "left" : "right";
+      const zoneSide = upZones.includes(zone) ? "up" : "down";
       el.classList.toggle("target", zoneSide === activeSide);
     });
   }
@@ -251,17 +254,17 @@ export function runHandBounce(ctx) {
     const bpm = START_BPM + (END_BPM - START_BPM) * progress;
     const intervalMs = 60000 / bpm;
 
-    side = side === "left" ? "right" : "left";
+    side = side === "up" ? "down" : "up";
     beatTime = performance.now();
     beatScored = false;
     highlightSide(side);
-    beep(side === "left" ? 440 : 660);
+    beep(side === "up" ? 660 : 440); // เสียงสูง = ขึ้น, เสียงต่ำ = ลง ให้ตรงสัญชาตญาณ
 
     beatTimeout = setTimeout(scheduleBeat, intervalMs);
   }
 
   function onHitSide(hitSide) {
-    if (beatScored || hitSide !== side) return; // ผิดฝั่ง/ให้คะแนนไปแล้ว: ไม่ตัดคะแนน ปล่อยผ่าน
+    if (beatScored || hitSide !== side) return; // ผิดจังหวะ/ให้คะแนนไปแล้ว: ไม่ตัดคะแนน ปล่อยผ่าน
     const dt = Math.abs(performance.now() - beatTime);
     if (dt <= 250) {
       beatScored = true;
@@ -270,12 +273,12 @@ export function runHandBounce(ctx) {
   }
 
   ctx.setZoneHandler(({ zone }) => {
-    if (zone) onHitSide(leftZones.includes(zone) ? "left" : "right");
+    if (zone) onHitSide(upZones.includes(zone) ? "up" : "down");
   });
 
   const tapHandlers = {};
   Object.entries(corners).forEach(([zone, el]) => {
-    const handler = () => onHitSide(leftZones.includes(zone) ? "left" : "right");
+    const handler = () => onHitSide(upZones.includes(zone) ? "up" : "down");
     tapHandlers[zone] = handler;
     el.addEventListener("click", handler);
   });
@@ -289,10 +292,12 @@ export function runHandBounce(ctx) {
 }
 
 // ============ เกม 4: ตามท่ามือ (Simon Says โซน — ลำดับยาวขึ้นทุกรอบ) ============
+// v2: ปรับให้เข้าใจง่ายขึ้นตามฟีดแบ็กครู (บอกว่าเกมนี้ทำให้งง/ไม่สนุก) — ลำดับสั้นลง (2→4 แทน 3→6),
+// โชว์แต่ละท่านานขึ้น + มี badge บอกความคืบหน้าตลอดเวลา (ทั้งตอนดูและตอนทำตาม) กันเด็กหลงว่าอยู่ขั้นไหน
 export function runHandDanceFollow(ctx) {
   const { corners, onScore, onEnd } = ctx;
   const zones = ["tl", "tr", "bl", "br"];
-  const MAX_ROUNDS = 4; // ความยาวลำดับ: รอบ 1-4 = 3,4,5,6 โซน
+  const MAX_ROUNDS = 3; // ความยาวลำดับ: รอบ 1-3 = 2,3,4 โซน (สั้นลงจากเดิม 3-6 ที่ยาวเกินไป)
   let sequence = [];
   let round = 0;
   let playerIndex = 0;
@@ -303,10 +308,15 @@ export function runHandDanceFollow(ctx) {
 
   resetCornerLabels(corners, { tl: "👉", tr: "👉", bl: "👉", br: "👉" });
 
+  const badge = document.createElement("div");
+  badge.className = "bonus-progress-badge";
+  ctx.stage.appendChild(badge);
+
   function cleanup() {
     clearTimeout(safetyTimeout);
     ctx.setZoneHandler(null);
     resetCornerLabels(corners);
+    badge.remove();
     ctx.onCleanupExtra?.();
   }
 
@@ -322,24 +332,26 @@ export function runHandDanceFollow(ctx) {
   }
 
   async function playSequence() {
-    for (const z of sequence) {
-      flashCorner(corners[z], 400);
-      await wait(600);
+    for (let i = 0; i < sequence.length; i++) {
+      badge.textContent = `👀 จำไว้นะ... ท่าที่ ${i + 1}/${sequence.length}`;
+      flashCorner(corners[sequence[i]], 550);
+      await wait(750);
     }
     if (ended) return;
     accepting = true;
     lastZone = null;
+    badge.textContent = `ทำตามลำดับ: 0/${sequence.length}`;
 
     // กันเกมค้างถ้านักเรียนไม่ตอบสนองเลย — ให้คะแนนรอบที่ผ่านมาแล้วแล้วจบแบบนุ่มนวล
     safetyTimeout = setTimeout(() => {
       onScore((round - 1) * 40);
       finish();
-    }, 6000);
+    }, 7000);
   }
 
   function startRound() {
     round += 1;
-    const targetLength = 2 + round; // รอบ1=3, รอบ2=4, ... รอบ4=6
+    const targetLength = 1 + round; // รอบ1=2, รอบ2=3, รอบ3=4
     while (sequence.length < targetLength) sequence.push(randomZone());
 
     if (round > MAX_ROUNDS) {
@@ -361,6 +373,7 @@ export function runHandDanceFollow(ctx) {
     if (zone === expected) {
       flashCorner(corners[zone], 200);
       playerIndex += 1;
+      badge.textContent = `ทำตามลำดับ: ${playerIndex}/${sequence.length}`;
       if (playerIndex === sequence.length) {
         clearTimeout(safetyTimeout);
         accepting = false;

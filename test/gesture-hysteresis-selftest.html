@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gesture Hysteresis Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Gesture Zone Hysteresis Self-Test</h1>
+  <p>ทดสอบว่า pointToZone ไม่สั่นไปมาตรงเส้นแบ่งกลาง (ปัญหาที่ครูรายงานมา) และยังสลับโซนได้จริงเมื่อขยับไกลพอ</p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import { pointToZone, resetZoneTracking } from "../assets/js/gesture-detection.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = actual === expected;
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}: ได้ "${actual}" (คาดหวัง "${expected}")`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    resetZoneTracking();
+
+    // เริ่มที่ tl ชัดเจน
+    check("จุดเริ่มต้นชัดเจนในมุม tl", pointToZone(0.3, 0.3), "tl");
+
+    // ขยับผ่านเส้นกลาง x แค่นิดเดียว (0.51) — ควรยังนับเป็น tl เดิม (กันสั่น)
+    check("ขยับผ่านเส้นกลาง x แค่ 0.01 ไม่ควรสลับโซน", pointToZone(0.51, 0.3), "tl");
+
+    // ขยับกลับมา 0.49 — ก็ควรยังเป็น tl เหมือนเดิม (ไม่เคยสลับไปไหน)
+    check("ขยับกลับมาใกล้กลางอีกฝั่ง ก็ยังไม่สลับ", pointToZone(0.49, 0.3), "tl");
+
+    // จำลองมือสั่นแกว่งไปมาแถวเส้นกลางหลายรอบ — ต้องนิ่งเป็น tl ตลอด ไม่กระโดด
+    let flickered = false;
+    const jitterSequence = [0.48, 0.52, 0.49, 0.53, 0.47, 0.51, 0.48];
+    const results = jitterSequence.map((x) => pointToZone(x, 0.3));
+    if (results.every((z) => z === "tl")) {
+      pass++;
+      lines.push(`✅ จำลองมือสั่น 7 ครั้งแถวเส้นกลาง: ${JSON.stringify(results)} — นิ่งเป็น tl ตลอด ไม่กระโดด`);
+    } else {
+      fail++;
+      lines.push(`❌ จำลองมือสั่น: ${JSON.stringify(results)} — ยังกระโดดอยู่ ไม่ผ่าน`);
+    }
+    logEl.innerHTML = lines.join("\n");
+
+    // ขยับไปไกลจริงๆ (เลย margin 0.07 ทั้งสองแกนพอ) — ต้องสลับโซนได้
+    check("ขยับไปมุม tr ไกลพอ ต้องสลับโซนได้จริง", pointToZone(0.7, 0.3), "tr");
+
+    // สลับกลับไป bl (ข้ามทั้งแกน x และ y) — ต้องสลับได้
+    check("ขยับข้ามไปมุม bl ไกลพอ ต้องสลับโซนได้จริง", pointToZone(0.3, 0.7), "bl");
+
+    // ทดสอบ resetZoneTracking() ว่าเคลียร์ state จริง
+    resetZoneTracking();
+    check("หลัง reset แล้วชี้จุดใหม่ต้องได้โซนตาม quadrant ปกติทันที", pointToZone(0.7, 0.7), "br");
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

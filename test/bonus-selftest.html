@@ -110,7 +110,7 @@
     }
 
     async function testHandBounce() {
-      log("\n=== Hand Bounce: ต้องรู้จังหวะ beat ล่วงหน้าไม่ได้ (engine สุ่ม/ปรับ BPM เอง) — แทนด้วยการยิงทั้งสองฝั่งรัวๆ ===");
+      log("\n=== Hand Bounce (v2: ขึ้น-ลง): ต้องรู้จังหวะ beat ล่วงหน้าไม่ได้ (engine สุ่ม/ปรับ BPM เอง) — แทนด้วยการยิงทั้งสองฝั่งรัวๆ ===");
       const { ctx, fireZone } = makeCtx("Hand Bounce");
       runHandBounce(ctx);
       const start = Date.now();
@@ -119,22 +119,22 @@
           clearInterval(interval);
           return;
         }
-        fireZone("tl"); // ฝั่งซ้าย
-        fireZone("tr"); // ฝั่งขวา (ยิงสลับเร็วๆ เพื่อให้มีโอกาสตรงจังหวะบ่อยที่สุด)
+        fireZone("tl"); // ฝั่งขึ้น (up)
+        fireZone("bl"); // ฝั่งลง (down) — ยิงสลับเร็วๆ เพื่อให้มีโอกาสตรงจังหวะบ่อยที่สุด
       }, 80);
     }
 
     async function testHandDanceFollow() {
-      log("\n=== Hand Dance Follow: ไม่รู้ลำดับล่วงหน้า (engine สุ่มเอง) ทดสอบแค่ debounce logic ด้วยการยิง zone เดิมซ้ำๆ ===");
+      log("\n=== Hand Dance Follow (v2: สั้นลง 2-4 ท่า + badge บอกความคืบหน้า): ทดสอบ debounce logic ด้วยการยิง zone เดิมซ้ำๆ ===");
       const { ctx, fireZone } = makeCtx("Hand Dance Follow");
       runHandDanceFollow(ctx);
-      // ทดสอบ debounce:ยิง zone เดิมรัวๆ ไม่ควรนับเป็นหลาย input
+      // ทดสอบ debounce: ยิง zone เดิมรัวๆ ไม่ควรนับเป็นหลาย input (ยิงตอนยังอยู่ช่วงเล่นย้อนให้ดู ~2.6s แรก)
       await wait(1000);
       fireZone("tl");
       fireZone("tl");
       fireZone("tl");
       log("  (ยิง tl 3 ครั้งติด ควรถูกนับเป็น 1 input เท่านั้นถ้า debounce ทำงานถูกต้อง — ดู log คะแนน/finish ด้านบนประกอบ)");
-      await wait(8000); // ปล่อยให้ safety timeout จบเกมเอง เพราะเราไม่รู้ลำดับที่ถูกต้อง
+      await wait(9000); // ปล่อยให้ safety timeout (7s หลัง accepting เริ่ม) จบเกมเอง เพราะเราไม่รู้ลำดับที่ถูกต้อง
     }
 
     async function testBrainrotSwat() {

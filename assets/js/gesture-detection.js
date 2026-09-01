@@ -59,26 +59,36 @@ async function loadModel() {
 }
 
 // แบ่งเฟรมเป็น 4 โซนตามตำแหน่งปลายนิ้วชี้ (landmark index 8)
-// มี dead-zone แคบๆ ตรงกลาง (±3%) กันขอบโซนไวเกินไปตอนมือสั่น/อยู่ก้ำกึ่ง
-const DEAD_ZONE = 0.03;
-function pointToZone(mx, y) {
+// มี hysteresis จริง (ไม่ใช่แค่ dead-zone เฉยๆ) — เมื่ออยู่โซนไหนแล้ว ต้องขยับเลยกึ่งกลางไปอีก
+// HYSTERESIS_MARGIN ถึงจะยอมเปลี่ยนโซน กันอาการสั่นตรงเส้นแบ่งกลาง (นี่คือสาเหตุหลักที่ทำให้การเลือก
+// รู้สึกไม่นิ่ง/กระโดดไปมาบ่อยๆ ตอนมือชี้ใกล้กึ่งกลางจอ)
+const HYSTERESIS_MARGIN = 0.07;
+let lastZone = null;
+
+// export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) — ตัวแอปจริงเรียกผ่าน
+// startGestureDetection เท่านั้น ไม่ได้เรียก pointToZone ตรงๆ
+export function pointToZone(mx, y) {
   const dx = mx - 0.5;
   const dy = y - 0.5;
-  if (Math.abs(dx) < DEAD_ZONE || Math.abs(dy) < DEAD_ZONE) {
-    // อยู่ในแนวกึ่งกลาง ให้ใช้ผลจากรอบก่อนหน้าแทน (เรียก caller เป็นคนตัดสินใจ — คืนค่า sign ปกติไปก่อน)
+  const candidate = dx < 0 ? (dy < 0 ? "tl" : "bl") : dy < 0 ? "tr" : "br";
+
+  if (lastZone && candidate !== lastZone) {
+    // ยังใกล้กึ่งกลางไปในแกนใดแกนหนึ่งไม่พอ ให้ถือว่ายังอยู่โซนเดิมไปก่อน (กันสั่น)
+    if (Math.abs(dx) < HYSTERESIS_MARGIN || Math.abs(dy) < HYSTERESIS_MARGIN) {
+      return lastZone;
+    }
   }
-  if (dx < 0 && dy < 0) return "tl";
-  if (dx >= 0 && dy < 0) return "tr";
-  if (dx < 0 && dy >= 0) return "bl";
-  return "br";
+  lastZone = candidate;
+  return candidate;
 }
 
-// Exponential moving average เบาๆ ลดอาการสั่น/กระตุกของจุดที่จับได้ ให้ประสบการณ์ลื่นขึ้น
-const SMOOTHING = 0.4; // 0 = ไม่ smooth เลย, 1 = ไม่ขยับเลย (ค่านี้ tune จากการทดสอบจริงได้)
+// Exponential moving average ลดอาการสั่น/กระตุกของจุดที่จับได้ ให้ประสบการณ์ลื่นขึ้น
+// (ปรับเพิ่มจาก 0.4 หลังพบว่าจุดยังสั่นเกินไป — ค่านี้ tune ต่อได้จากการทดสอบจริงบนมือถือ)
+const SMOOTHING = 0.55; // 0 = ไม่ smooth เลย, 1 = ไม่ขยับเลย
 let smoothX = null;
 let smoothY = null;
 
-export async function startGestureDetection(videoEl, onUpdate, { holdMs = 1000, onError } = {}) {
+export async function startGestureDetection(videoEl, onUpdate, { holdMs = 800, onError } = {}) {
   try {
     await loadModel();
   } catch (err) {
@@ -134,6 +144,7 @@ export async function startGestureDetection(videoEl, onUpdate, { holdMs = 1000, 
       currentZone = null;
       smoothX = null;
       smoothY = null;
+      lastZone = null; // มือหลุดเฟรม รีเซ็ต hysteresis กันค้างโซนเก่าตอนมือกลับเข้ามาที่อื่น
       onUpdate({ zone: null, point: null, progress: 0, confirmed: false });
     }
 
@@ -145,4 +156,9 @@ export async function startGestureDetection(videoEl, onUpdate, { holdMs = 1000, 
 
 export function stopGestureDetection() {
   running = false;
+}
+
+// เฉพาะ test: รีเซ็ต state ของ pointToZone ระหว่างเทสต์เคสต่างๆ ไม่ให้ค้างข้ามกัน
+export function resetZoneTracking() {
+  lastZone = null;
 }

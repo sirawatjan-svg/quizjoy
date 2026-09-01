@@ -79,28 +79,30 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .question-bar {
   position: absolute;
   top: 0; left: 0; right: 0;
-  min-height: 88px;
+  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px 90px; /* กันไม่ให้ทับกับกล่องคำตอบมุมบนซ้าย/ขวา */
+  padding: 24px 56px; /* กันไม่ให้ทับกับกล่องคำตอบมุมบนซ้าย/ขวา */
   background: linear-gradient(to bottom, rgba(15,23,42,0.95), rgba(15,23,42,0.6));
   z-index: 5;
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 1.35;
+  font-weight: 700;
   text-align: center;
   box-sizing: border-box;
 }
 
 .answer-corner {
   position: absolute;
-  width: 42%;
-  height: 28%;
+  width: 32%;
+  height: 20%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px;
+  padding: 10px;
   font-weight: 700;
+  font-size: 0.95rem;
   border-radius: 16px;
   z-index: 5;
   transition: transform 0.15s ease, background 0.2s ease;
@@ -123,10 +125,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: var(--wrong);
 }
 
-.answer-corner.tl { top: 96px; left: 12px; background: var(--tl); }
-.answer-corner.tr { top: 96px; right: 12px; background: var(--tr); }
-.answer-corner.bl { bottom: 28px; left: 12px; background: var(--bl); }
-.answer-corner.br { bottom: 28px; right: 12px; background: var(--br); }
+.answer-corner.tl { top: 210px; left: 12px; background: var(--tl); }
+.answer-corner.tr { top: 210px; right: 12px; background: var(--tr); }
+.answer-corner.bl { bottom: 20px; left: 12px; background: var(--bl); }
+.answer-corner.br { bottom: 20px; right: 12px; background: var(--br); }
 
 .answer-corner.active { transform: scale(1.05); }
 .answer-corner.correct { background: var(--correct) !important; }
@@ -174,6 +176,21 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .review-item .your-answer.wrong { color: var(--wrong); }
 .review-item .correct-answer { color: var(--correct); font-size: 0.9rem; }
 .review-item .explanation { color: var(--muted); font-size: 0.85rem; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 6px; }
+
+.bonus-progress-badge {
+  position: absolute;
+  top: 210px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  background: rgba(15,23,42,0.9);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  padding: 8px 20px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
 
 .bonus-toast {
   position: absolute;
