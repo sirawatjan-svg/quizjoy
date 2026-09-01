@@ -1,5 +1,4 @@
-import { startGestureDetection } from "../assets/js/gesture-detection.js";
-import { createSkeletonRenderer } from "../assets/js/skeleton-overlay.js";
+import { startGestureDetection, resetHoldTimer } from "../assets/js/gesture-detection.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
 import { db, doc, getDoc, setDoc, serverTimestamp, arrayUnion } from "../assets/js/firebase-init.js";
 
@@ -32,10 +31,7 @@ const bonusBanner = document.getElementById("bonus-banner");
 const bonusEmoji = document.getElementById("bonus-emoji");
 const bonusTitle = document.getElementById("bonus-title");
 const bonusSub = document.getElementById("bonus-sub");
-const skeletonCanvas = document.getElementById("skeleton-canvas");
 const perfBadge = document.getElementById("perf-badge");
-
-const skeleton = createSkeletonRenderer(skeletonCanvas);
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -149,6 +145,9 @@ function loadQuestion() {
   clearRevealClasses();
   answered = false;
   holdProgressBar.style.width = "0%";
+  // สำคัญ: บังคับให้ต้อง "ค้างชี้ใหม่" ครบเวลาก่อนถึงจะตอบข้อนี้ได้ ไม่งั้นเวลาค้างจากข้อก่อนหน้า
+  // จะไหลข้ามมา ทำให้ระบบตอบให้เองทันทีที่ขึ้นคำถามใหม่ (บั๊กที่ครูรายงานว่า "ตอบให้เองก่อนจะชี้")
+  resetHoldTimer();
 
   const questions = sessionData.questions;
   const q = questions[questionIndex % questions.length];
@@ -174,6 +173,16 @@ function showBonusToast(text) {
   setTimeout(() => toast.remove(), 1400);
 }
 
+// ตัวอย่างท่าทางแบบเคลื่อนไหว โชว์ตอนนับถอยหลังก่อนเริ่มมินิเกม (แทน "คำอธิบายเฉยๆ" ที่ครูบอกว่าดูไม่ออก
+// ว่าต้องทำท่าไหน) — เพิ่มเกมใหม่ในอนาคต: ใส่ entry ที่นี่พร้อม anim class ใน style.css
+const BONUS_DEMOS = {
+  "hand-bounce": {
+    anim: "anim-updown",
+    caption: "ยกมือขึ้น-ลง สลับจังหวะแบบนี้!",
+    durationMs: 3200,
+  },
+};
+
 function triggerBonusChallenge() {
   mode = "bonus";
   clearRevealClasses();
@@ -184,6 +193,21 @@ function triggerBonusChallenge() {
   bonusTitle.textContent = game.name;
   bonusSub.textContent = "ภารกิจพิเศษ! เตรียมตัว...";
   bonusBanner.style.display = "flex";
+
+  const demo = BONUS_DEMOS[game.id];
+  const bonusDemo = document.getElementById("bonus-demo");
+  const bonusDemoHand = document.getElementById("bonus-demo-hand");
+  const bonusDemoCaption = document.getElementById("bonus-demo-caption");
+  let bannerDurationMs = 1800;
+
+  if (demo) {
+    bonusDemoHand.className = `bonus-demo-hand ${demo.anim}`;
+    bonusDemoCaption.textContent = demo.caption;
+    bonusDemo.style.display = "block";
+    bannerDurationMs = demo.durationMs;
+  } else {
+    bonusDemo.style.display = "none";
+  }
 
   setTimeout(() => {
     bonusBanner.style.display = "none";
@@ -207,7 +231,7 @@ function triggerBonusChallenge() {
         if (Date.now() < gameEndsAt) nextQuestion();
       },
     });
-  }, 1800);
+  }, bannerDurationMs);
 }
 
 function submitAnswer(zone) {
@@ -251,10 +275,6 @@ function submitAnswer(zone) {
 function onZoneUpdate(frame) {
   const { zone, point, progress, confirmed } = frame;
 
-  // วาดโครงกระดูกทุกเฟรมเสมอ ไม่ว่าจะอยู่โหมดคำถามหรือโหมดบอนัส และไม่ว่าตอบไปแล้วหรือยัง
-  // (ถ้าวาดเฉพาะตอนรอคำตอบ ภาพจะกระตุกหายเป็นช่วงๆ ดูเหมือนระบบค้าง)
-  skeleton.draw(frame);
-
   if (mode === "bonus") {
     bonusZoneHandler?.({ zone, point });
     return;
@@ -264,8 +284,13 @@ function onZoneUpdate(frame) {
 
   highlightZone(zone);
 
-  // ปลายนิ้วชี้มีวงแหวนจาก skeleton overlay อยู่แล้ว ไม่ต้องมีจุดกลมซ้ำซ้อนอีก
-  handCursor.style.display = "none";
+  if (point) {
+    handCursor.style.display = "block";
+    handCursor.style.left = `${point.x * 100}%`;
+    handCursor.style.top = `${point.y * 100}%`;
+  } else {
+    handCursor.style.display = "none";
+  }
 
   holdProgressBar.style.width = `${(progress || 0) * 100}%`;
 
@@ -352,13 +377,12 @@ startBtn.addEventListener("click", async () => {
   quizStage.style.display = "block";
 
   if (mediaStream) {
+    // bodySkeleton: false — เอาโครงร่างกายออกตามฟีดแบ็กครู (ไม่จำเป็น + กินประมวลผลเปล่าๆ
+    // ตัดโมเดล pose ตัวที่สองออกไปเลย ช่วยให้เหลือ CPU/GPU ให้ hand-tracking แม่นและลื่นขึ้นด้วย)
     startGestureDetection(cameraFeed, onZoneUpdate, {
-      bodySkeleton: true,
-      onPerf: ({ fps, bodySkeleton, autoDowngraded }) => {
-        perfBadge.textContent = `${fps} fps${bodySkeleton ? "" : " · โหมดเบา"}`;
-        if (autoDowngraded) {
-          showBonusToast("เครื่องประมวลผลไม่ทัน — ปิดโครงร่างกายให้ลื่นขึ้น");
-        }
+      bodySkeleton: false,
+      onPerf: ({ fps }) => {
+        perfBadge.textContent = `${fps} fps`;
       },
       onError: () => {
         setupStatus.textContent = "";

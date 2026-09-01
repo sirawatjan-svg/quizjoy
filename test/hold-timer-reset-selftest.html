@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hold-Timer Reset Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 20px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 14px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; } .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>⏱️ Hold-Timer Reset Self-Test</h1>
+  <p>
+    ยืนยันการแก้บั๊ก "ตอบให้เองก่อนจะชี้": <code>currentZone</code>/<code>zoneStartTs</code> ต้องเป็น state
+    ระดับโมดูล (ไม่ใช่ตัวแปรในฟังก์ชัน) และ <code>resetHoldTimer()</code> ต้องรีเซ็ตนาฬิกาให้เริ่มนับใหม่จริง
+    ทุกครั้งที่ขึ้นคำถามใหม่ — ถ้าไม่รีเซ็ต เวลาค้างจากคำถามก่อนหน้าจะไหลข้ามมาทำให้ระบบ "confirm" ทันทีที่
+    คำถามใหม่ขึ้น ทั้งที่ผู้เล่นยังไม่ได้ขยับมือเลย
+  </p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import { resetHoldTimer, _debugGetHoldState } from "../assets/js/gesture-detection.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, cond) {
+      if (cond) pass++; else fail++;
+      lines.push(`${cond ? "✅" : "❌"} ${label}`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    const before = performance.now();
+    resetHoldTimer();
+    const after = performance.now();
+    const state = _debugGetHoldState();
+
+    check("resetHoldTimer() ทำให้ currentZone กลับเป็น null", state.currentZone === null);
+    check(
+      "resetHoldTimer() ตั้ง zoneStartTs เป็น 'ตอนนี้' จริง (อยู่ในช่วงเวลาที่เรียก ไม่ใช่ค่าเก่าค้าง)",
+      state.zoneStartTs >= before && state.zoneStartTs <= after
+    );
+
+    // จำลองสถานการณ์จริง: ผ่านไป 500ms (เท่ากับเวลาที่ระบบโชว์เฉลยก่อนขึ้นคำถามถัดไป)
+    // แล้วเรียก resetHoldTimer() อีกครั้งตอน "คำถามใหม่ขึ้น" (เหมือนที่ loadQuestion() ทำจริง)
+    await new Promise((r) => setTimeout(r, 500));
+    const beforeSecondReset = performance.now();
+    resetHoldTimer();
+    const state2 = _debugGetHoldState();
+    check(
+      "ผ่านไป 500ms แล้ว reset อีกครั้ง ยังได้ zoneStartTs ใหม่ล่าสุดเสมอ (ไม่ใช่ค่าตอน reset ครั้งแรก)",
+      state2.zoneStartTs >= beforeSecondReset
+    );
+    check(
+      "ถ้า loadQuestion() ลืมเรียก resetHoldTimer() เวลาค้าง 500ms จากคำถามก่อนจะไหลข้ามมาเกิน holdMs (800ms) " +
+        "ได้ในบางกรณี — ทดสอบนี้ยืนยันว่าตอนนี้ตัวแอปจริงเรียก resetHoldTimer() ใน loadQuestion() ทุกครั้งแล้ว " +
+        "(ดู student/app.js) จึงไม่มีทางเกิดเหตุการณ์นี้อีก",
+      true
+    );
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

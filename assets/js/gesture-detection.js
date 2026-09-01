@@ -84,6 +84,13 @@ async function loadModels({ bodySkeleton }) {
 const HYSTERESIS_MARGIN = 0.07;
 let lastZone = null;
 
+// นาฬิกาจับเวลา "ค้างชี้นานพอหรือยัง" — ต้องอยู่ระดับโมดูล (ไม่ใช่ตัวแปรในฟังก์ชัน) เพราะต้องรีเซ็ตได้
+// จากภายนอกทุกครั้งที่ขึ้นคำถามใหม่ ไม่งั้นเวลาค้างจากคำถามก่อนหน้าจะไหลต่อเนื่องข้ามคำถาม — ถ้ามือดัน
+// พักอยู่โซนเดิมพอดีตอนคำถามใหม่ขึ้น จะกลายเป็น "ตอบให้เลยทันที" ทั้งที่ยังไม่ได้ตั้งใจชี้ข้อนั้นเลย
+// (นี่คือสาเหตุจริงของอาการ "ตอบให้เองก่อนจะชี้" ที่ครูรายงานมา)
+let currentZone = null;
+let zoneStartTs = 0;
+
 // export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) — ตัวแอปจริงเรียกผ่าน
 // startGestureDetection เท่านั้น ไม่ได้เรียก pointToZone ตรงๆ
 export function pointToZone(mx, y) {
@@ -135,9 +142,8 @@ export async function startGestureDetection(
   smoothX = null;
   smoothY = null;
   lastZone = null;
-
-  let currentZone = null;
-  let zoneStartTs = 0;
+  currentZone = null;
+  zoneStartTs = performance.now();
   let usePose = bodySkeleton && !!poseLandmarker;
 
   // --- FPS watchdog ---
@@ -240,4 +246,16 @@ export function stopGestureDetection() {
 // เฉพาะ test: รีเซ็ต state ของ pointToZone ระหว่างเทสต์เคสต่างๆ ไม่ให้ค้างข้ามกัน
 export function resetZoneTracking() {
   lastZone = null;
+}
+
+// เรียกทุกครั้งที่ขึ้นคำถามใหม่ (หรือกลับจากโหมดบอนัสมาโหมดคำถาม) — บังคับให้ต้อง "ค้างชี้ใหม่" ครบ
+// holdMs เต็มๆ ก่อนถึงจะ confirm ได้ กันเวลาค้างเก่าจากคำถามก่อนหน้าไหลข้ามมาทำให้ตอบให้เองทันที
+export function resetHoldTimer() {
+  currentZone = null;
+  zoneStartTs = performance.now();
+}
+
+// เฉพาะ test: อ่าน state ภายในของนาฬิกาจับเวลา ยืนยันว่า resetHoldTimer() รีเซ็ตจริง
+export function _debugGetHoldState() {
+  return { currentZone, zoneStartTs };
 }

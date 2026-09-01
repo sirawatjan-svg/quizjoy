@@ -14,12 +14,15 @@
 
 * { box-sizing: border-box; }
 
+html { margin: 0; padding: 0; }
+
 body {
   margin: 0;
   font-family: "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .screen {
@@ -62,7 +65,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .quiz-stage {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  height: 100vh; /* fallback สำหรับเบราว์เซอร์เก่าที่ไม่รู้จัก dvh */
+  height: 100dvh; /* viewport จริงที่มองเห็น ไม่รวมพื้นที่ address bar ที่ซ่อน/โผล่ตอนเลื่อน —
+                     100vh ล้วนๆ บนมือถือมักสูงเกินจอจริงจนต้องเลื่อนดู เห็นกล้อง/คำตอบไม่ครบ */
   overflow: hidden;
 }
 
@@ -183,6 +188,27 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .bonus-banner .emoji { font-size: 4rem; }
 .bonus-banner h2 { margin: 0; font-size: 1.6rem; }
 .bonus-banner p { color: var(--muted); margin: 0; }
+
+/* ตัวอย่างท่าทางเคลื่อนไหว โชว์ตอนนับถอยหลังก่อนเริ่มมินิเกม แทนคำอธิบายเฉยๆ
+   ให้เด็กเห็นภาพว่าต้องทำท่าไหนจริงๆ ก่อนเริ่มเล่น */
+.bonus-demo { margin-top: 12px; }
+.bonus-demo-hand {
+  font-size: 3rem;
+  display: inline-block;
+}
+.bonus-demo-caption {
+  color: var(--muted) !important;
+  font-size: 0.85rem !important;
+  margin-top: 4px !important;
+}
+
+@keyframes demo-bounce-updown {
+  0%, 100% { transform: translateY(-38px); }
+  50% { transform: translateY(38px); }
+}
+.bonus-demo-hand.anim-updown {
+  animation: demo-bounce-updown 0.9s ease-in-out infinite;
+}
 
 .review-panel {
   max-width: 480px;
