@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Skeleton Overlay Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 20px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 14px; border-radius: 8px; font-family: monospace; font-size: 0.82rem; margin-bottom: 16px; }
+    .ok { color: #22c55e; } .fail { color: #ef4444; }
+    .stage { position: relative; display: inline-block; margin: 8px 12px 8px 0; vertical-align: top; }
+    .stage img { display: block; width: 420px; border-radius: 8px; }
+    .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+    h3 { margin: 6px 0; font-size: 0.9rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <h1>🦴 Skeleton Overlay Self-Test</h1>
+  <p>
+    พิสูจน์ว่าโครงกระดูก (มือ 21 จุด/ข้าง + ตัว 33 จุด) วาดออกมาได้จริงและตรงตำแหน่ง โดยรันแบบ IMAGE mode
+    กับรูปคนจริง (เลี่ยงข้อจำกัด sandbox ที่บล็อกกล้องเสมอ) — ถ้าเห็นเส้นโครงทาบตรงตัวคนในรูป = ใช้ได้จริง
+  </p>
+  <div id="log">กำลังเริ่ม...</div>
+
+  <div class="stage">
+    <h3>ก. นักเรียนยกแขน (ใกล้เคียงการใช้งานจริงที่สุด)</h3>
+    <img id="img-a" crossorigin="anonymous"
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Elementary_school_students_conduct_jumping_jacks_to_warm_up_USMC-120214-M-MA421-288.jpg/960px-Elementary_school_students_conduct_jumping_jacks_to_warm_up_USMC-120214-M-MA421-288.jpg" />
+    <canvas id="cv-a"></canvas>
+  </div>
+
+  <div class="stage">
+    <h3>ข. คนยืนเห็นมือชัด</h3>
+    <img id="img-b" crossorigin="anonymous"
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Yerevan%2C_Armenian_girls_posing_in_photo_shoot%2C_Acting%2C_Posture%2C_Body_language%2C_Armenia.jpg/960px-Yerevan%2C_Armenian_girls_posing_in_photo_shoot%2C_Acting%2C_Posture%2C_Body_language%2C_Armenia.jpg" />
+    <canvas id="cv-b"></canvas>
+  </div>
+
+  <script type="module">
+    import { createSkeletonRenderer } from "../assets/js/skeleton-overlay.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    function log(m, cls = "") {
+      lines.push(cls ? `<span class="${cls}">${m}</span>` : m);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    const V = "1.0.1";
+    const HAND_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+    const POSE_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+    async function waitImg(img) {
+      if (img.complete && img.naturalWidth) return;
+      await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("โหลดรูปไม่ได้: " + img.id)); });
+    }
+
+    try {
+      log("[1/5] import vision_bundle...");
+      const { HandLandmarker, PoseLandmarker, FilesetResolver } = await import(
+        `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/vision_bundle.mjs`
+      );
+      log("✅ import สำเร็จ", "ok");
+
+      log("[2/5] ตรวจ connection constants (ตัวที่ใช้ลากเส้น)...");
+      const hc = HandLandmarker.HAND_CONNECTIONS ?? [];
+      const pc = PoseLandmarker.POSE_CONNECTIONS ?? [];
+      log(`   HAND_CONNECTIONS = ${hc.length} เส้น, POSE_CONNECTIONS = ${pc.length} เส้น`);
+      if (hc.length === 0 || pc.length === 0) throw new Error("ไม่พบ connection constants — วาดเส้นไม่ได้");
+      log(`   ตัวอย่างรูปแบบข้อมูล: ${JSON.stringify(hc[0])}`, "ok");
+      log("✅ มี connection ครบทั้งมือและตัว", "ok");
+
+      log("[3/5] สร้าง HandLandmarker + PoseLandmarker (IMAGE mode)...");
+      const vision = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${V}/wasm`);
+      const hand = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: HAND_URL, delegate: "GPU" },
+        runningMode: "IMAGE", numHands: 4,
+      });
+      const pose = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: POSE_URL, delegate: "GPU" },
+        runningMode: "IMAGE", numPoses: 2,
+      });
+      log("✅ สร้างโมเดลทั้งสองสำเร็จ", "ok");
+
+      log("[4/5] รัน detect + วาดโครงกระดูกลง canvas...");
+      let totalHandPts = 0, totalPosePts = 0;
+
+      for (const [imgId, cvId, label] of [["img-a","cv-a","ก"], ["img-b","cv-b","ข"]]) {
+        const img = document.getElementById(imgId);
+        const cv = document.getElementById(cvId);
+        await waitImg(img);
+
+        const hRes = hand.detect(img);
+        const pRes = pose.detect(img);
+        const hands = hRes.landmarks ?? [];
+        const poses = pRes.landmarks ?? [];
+        totalHandPts += hands.reduce((s, h) => s + h.length, 0);
+        totalPosePts += poses.reduce((s, p) => s + p.length, 0);
+
+        const renderer = createSkeletonRenderer(cv);
+        renderer.draw({
+          handLandmarks: hands, poseLandmarks: poses,
+          handConnections: hc, poseConnections: pc,
+          videoW: img.naturalWidth, videoH: img.naturalHeight,
+        });
+
+        log(`   รูป ${label}: เจอมือ ${hands.length} ข้าง (${hands.reduce((s,h)=>s+h.length,0)} จุด), ` +
+            `ตัว ${poses.length} คน (${poses.reduce((s,p)=>s+p.length,0)} จุด)`, "ok");
+      }
+
+      log("[5/5] ตรวจว่ามีการวาดลง canvas จริง (ไม่ใช่ canvas เปล่า)...");
+      let drewSomething = false;
+      for (const cvId of ["cv-a", "cv-b"]) {
+        const cv = document.getElementById(cvId);
+        const px = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+        let nonTransparent = 0;
+        for (let i = 3; i < px.length; i += 4) if (px[i] > 0) nonTransparent++;
+        log(`   ${cvId}: pixel ที่ถูกวาด ${nonTransparent.toLocaleString()} จุด`);
+        if (nonTransparent > 500) drewSomething = true;
+      }
+      if (!drewSomething) throw new Error("canvas ว่างเปล่า — วาดไม่ออก");
+
+      log(`\n🎉 ผ่านทั้งหมด — รวมจุด landmark ที่วาดได้: มือ ${totalHandPts} จุด + ตัว ${totalPosePts} จุด`, "ok");
+      log(`   (เทียบของเดิมที่วาดแค่ 1 จุด/เฟรม)`, "ok");
+      log("⚠️ ยังไม่ได้ทดสอบกับกล้องสดจริง — ต้องลองบนมือถือจริงอีกที", "");
+    } catch (err) {
+      log(`❌ ล้มเหลว: ${err.message}`, "fail");
+      console.error(err);
+    }
+  </script>
+</body>
+</html>

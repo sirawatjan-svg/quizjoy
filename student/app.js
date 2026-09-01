@@ -1,4 +1,5 @@
 import { startGestureDetection } from "../assets/js/gesture-detection.js";
+import { createSkeletonRenderer } from "../assets/js/skeleton-overlay.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
 import { db, doc, getDoc, setDoc, serverTimestamp, arrayUnion } from "../assets/js/firebase-init.js";
 
@@ -31,6 +32,10 @@ const bonusBanner = document.getElementById("bonus-banner");
 const bonusEmoji = document.getElementById("bonus-emoji");
 const bonusTitle = document.getElementById("bonus-title");
 const bonusSub = document.getElementById("bonus-sub");
+const skeletonCanvas = document.getElementById("skeleton-canvas");
+const perfBadge = document.getElementById("perf-badge");
+
+const skeleton = createSkeletonRenderer(skeletonCanvas);
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -243,7 +248,13 @@ function submitAnswer(zone) {
   }, 1200); // เผื่อเวลาให้เห็นเฉลยก่อนขึ้นข้อถัดไป/บอนัส
 }
 
-function onZoneUpdate({ zone, point, progress, confirmed }) {
+function onZoneUpdate(frame) {
+  const { zone, point, progress, confirmed } = frame;
+
+  // วาดโครงกระดูกทุกเฟรมเสมอ ไม่ว่าจะอยู่โหมดคำถามหรือโหมดบอนัส และไม่ว่าตอบไปแล้วหรือยัง
+  // (ถ้าวาดเฉพาะตอนรอคำตอบ ภาพจะกระตุกหายเป็นช่วงๆ ดูเหมือนระบบค้าง)
+  skeleton.draw(frame);
+
   if (mode === "bonus") {
     bonusZoneHandler?.({ zone, point });
     return;
@@ -253,13 +264,8 @@ function onZoneUpdate({ zone, point, progress, confirmed }) {
 
   highlightZone(zone);
 
-  if (point) {
-    handCursor.style.display = "block";
-    handCursor.style.left = `${point.x * 100}%`;
-    handCursor.style.top = `${point.y * 100}%`;
-  } else {
-    handCursor.style.display = "none";
-  }
+  // ปลายนิ้วชี้มีวงแหวนจาก skeleton overlay อยู่แล้ว ไม่ต้องมีจุดกลมซ้ำซ้อนอีก
+  handCursor.style.display = "none";
 
   holdProgressBar.style.width = `${(progress || 0) * 100}%`;
 
@@ -347,6 +353,13 @@ startBtn.addEventListener("click", async () => {
 
   if (mediaStream) {
     startGestureDetection(cameraFeed, onZoneUpdate, {
+      bodySkeleton: true,
+      onPerf: ({ fps, bodySkeleton, autoDowngraded }) => {
+        perfBadge.textContent = `${fps} fps${bodySkeleton ? "" : " · โหมดเบา"}`;
+        if (autoDowngraded) {
+          showBonusToast("เครื่องประมวลผลไม่ทัน — ปิดโครงร่างกายให้ลื่นขึ้น");
+        }
+      },
       onError: () => {
         setupStatus.textContent = "";
         showBonusToast("โหมดชี้มือใช้ไม่ได้ตอนนี้ — แตะจอตอบแทนได้เลย");

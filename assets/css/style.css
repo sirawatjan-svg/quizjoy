@@ -73,7 +73,33 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1); /* mirror like a mirror */
-  opacity: 0.35; /* dim so text stays readable; adjust after testing */
+  opacity: 0.45; /* หรี่ให้อ่านตัวหนังสือออก แต่ยังเห็นตัวเองพอให้จัดท่าได้ */
+}
+
+/* โครงกระดูก (มือ 21 จุด/ข้าง + ตัว 33 จุด) วาดทับภาพกล้อง
+   ต้อง mirror เหมือน .camera-feed เป๊ะๆ ไม่งั้นเส้นโครงจะกลับด้านกับภาพที่เห็น */
+.skeleton-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1);
+  z-index: 2; /* เหนือภาพกล้อง แต่ใต้กล่องคำถาม/คำตอบ */
+  pointer-events: none;
+}
+
+.perf-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 6;
+  background: rgba(15,23,42,0.75);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .question-bar {
