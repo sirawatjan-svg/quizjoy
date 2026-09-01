@@ -112,8 +112,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   top: 0; left: 0; right: 0;
   min-height: 200px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 24px 56px; /* กันไม่ให้ทับกับกล่องคำตอบมุมบนซ้าย/ขวา */
   background: linear-gradient(to bottom, rgba(15,23,42,0.95), rgba(15,23,42,0.6));
   z-index: 5;
@@ -122,6 +124,28 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-weight: 700;
   text-align: center;
   box-sizing: border-box;
+}
+
+.question-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 999px;
+  padding: 3px 14px;
+  letter-spacing: 0.02em;
+}
+
+.prep-countdown {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--accent);
+  animation: countdown-pulse 1s ease-in-out infinite;
+}
+@keyframes countdown-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.75; }
 }
 
 .answer-corner {
@@ -134,10 +158,32 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   padding: 10px;
   font-weight: 700;
   font-size: 0.95rem;
-  border-radius: 16px;
+  border-radius: 18px;
   z-index: 5;
-  transition: transform 0.15s ease, background 0.2s ease;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+  border: 1px solid rgba(255,255,255,0.15);
+  background-blend-mode: overlay;
+  transition: transform 0.15s ease, background 0.2s ease, opacity 0.3s ease, box-shadow 0.2s ease;
 }
+
+/* สถานะซ่อนไว้ระหว่างช่วง "เตรียมตัว" (ยังไม่โชว์ตัวเลือก) แล้วค่อย pop เข้ามาทีหลัง */
+.answer-corner.prep-hidden {
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+}
+
+.answer-corner.reveal-in {
+  animation: corner-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes corner-pop-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+.answer-corner.tl.reveal-in { animation-delay: 0s; }
+.answer-corner.tr.reveal-in { animation-delay: 0.08s; }
+.answer-corner.bl.reveal-in { animation-delay: 0.16s; }
+.answer-corner.br.reveal-in { animation-delay: 0.24s; }
 
 .timer-badge {
   position: absolute;
@@ -156,10 +202,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   color: var(--wrong);
 }
 
-.answer-corner.tl { top: 210px; left: 12px; background: var(--tl); }
-.answer-corner.tr { top: 210px; right: 12px; background: var(--tr); }
-.answer-corner.bl { bottom: 20px; left: 12px; background: var(--bl); }
-.answer-corner.br { bottom: 20px; right: 12px; background: var(--br); }
+.answer-corner.tl { top: 210px; left: 12px; background: linear-gradient(145deg, color-mix(in srgb, var(--tl) 100%, white 18%), var(--tl)); }
+.answer-corner.tr { top: 210px; right: 12px; background: linear-gradient(145deg, color-mix(in srgb, var(--tr) 100%, white 18%), var(--tr)); }
+.answer-corner.bl { bottom: 20px; left: 12px; background: linear-gradient(145deg, color-mix(in srgb, var(--bl) 100%, white 18%), var(--bl)); }
+.answer-corner.br { bottom: 20px; right: 12px; background: linear-gradient(145deg, color-mix(in srgb, var(--br) 100%, white 18%), var(--br)); }
 
 .answer-corner.active { transform: scale(1.05); }
 .answer-corner.correct { background: var(--correct) !important; }
@@ -242,6 +288,27 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-weight: 700;
   font-size: 0.95rem;
   white-space: nowrap;
+}
+
+/* เอฟเฟกต์ฉลองตอนตอบถูก — เม็ดสีเล็กๆ พุ่งกระจายออกจากกึ่งกลางจอแล้วร่วงหาย
+   สร้าง/ลบ element พวกนี้ด้วย JS (ดู triggerConfetti() ใน student/app.js) */
+.confetti-particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  z-index: 30;
+  pointer-events: none;
+  animation: confetti-burst 0.9s cubic-bezier(0.25, 0.8, 0.4, 1) forwards;
+}
+@keyframes confetti-burst {
+  0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+  100% {
+    transform: translate(var(--confetti-x, 0), var(--confetti-y, 0)) rotate(var(--confetti-rot, 360deg)) scale(0.4);
+    opacity: 0;
+  }
 }
 
 .bonus-toast {

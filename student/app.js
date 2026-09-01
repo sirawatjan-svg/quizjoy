@@ -21,6 +21,8 @@ const setupStatus = document.getElementById("setup-status");
 const handCursor = document.getElementById("hand-cursor");
 const holdProgressBar = document.getElementById("hold-progress-bar");
 const questionText = document.getElementById("question-text");
+const questionLabel = document.getElementById("question-label");
+const prepCountdown = document.getElementById("prep-countdown");
 const timerBadge = document.getElementById("timer-badge");
 const finalScoreEl = document.getElementById("final-score");
 const finalSummaryEl = document.getElementById("final-summary");
@@ -53,6 +55,12 @@ let answered = false;
 let gameEndsAt = null;
 let timerInterval = null;
 let answerHistory = []; // { questionId, selectedZone, isCorrect, answeredAt } ทุกครั้งที่ตอบ ใช้ทำหน้าเฉลยย้อนหลัง
+
+// --- Kahoot-style: โชว์คำถามอย่างเดียวก่อน แล้วค่อยเปิดตัวเลือกทีหลัง (จังหวะที่ 2) ---
+const PREP_MS = 3000; // 3 วิ ให้อ่านคำถามก่อนตัวเลือกจะโผล่ (นับถอยหลัง 3-2-1 ให้เห็นด้วย)
+let totalQuestionsShown = 0; // นับเพิ่มทุกครั้งที่ขึ้นคำถามใหม่ (ไม่ใช้ questionIndex ตรงๆ เพราะมันวนซ้ำ)
+let prepTimeout = null;
+let prepCountdownInterval = null;
 
 // --- Bonus Challenge state ---
 let mode = "quiz"; // "quiz" | "bonus"
@@ -143,11 +151,18 @@ function clearRevealClasses() {
 
 function loadQuestion() {
   clearRevealClasses();
-  answered = false;
+  clearTimeout(prepTimeout);
+  clearInterval(prepCountdownInterval);
+
+  // จังหวะที่ 1 (แบบ Kahoot): โชว์คำถามอย่างเดียวก่อน ซ่อนตัวเลือกไว้ ยังตอบไม่ได้
+  answered = true;
   holdProgressBar.style.width = "0%";
   // สำคัญ: บังคับให้ต้อง "ค้างชี้ใหม่" ครบเวลาก่อนถึงจะตอบข้อนี้ได้ ไม่งั้นเวลาค้างจากข้อก่อนหน้า
   // จะไหลข้ามมา ทำให้ระบบตอบให้เองทันทีที่ขึ้นคำถามใหม่ (บั๊กที่ครูรายงานว่า "ตอบให้เองก่อนจะชี้")
   resetHoldTimer();
+
+  totalQuestionsShown += 1;
+  questionLabel.textContent = `🎯 คำถามข้อที่ ${totalQuestionsShown}`;
 
   const questions = sessionData.questions;
   const q = questions[questionIndex % questions.length];
@@ -158,11 +173,57 @@ function loadQuestion() {
   corners.bl.textContent = q.options.bl;
   corners.br.textContent = q.options.br;
   quizStage.dataset.correctZone = q.correctZone;
+
+  Object.values(corners).forEach((el) => {
+    el.classList.remove("reveal-in");
+    el.classList.add("prep-hidden");
+  });
+
+  let remaining = 3;
+  prepCountdown.style.display = "block";
+  prepCountdown.textContent = remaining;
+  prepCountdownInterval = setInterval(() => {
+    remaining -= 1;
+    if (remaining > 0) prepCountdown.textContent = remaining;
+    else clearInterval(prepCountdownInterval);
+  }, 1000);
+
+  // จังหวะที่ 2: เปิดตัวเลือกให้ตอบได้จริง
+  prepTimeout = setTimeout(() => {
+    if (Date.now() >= gameEndsAt) return; // เวลาหมดพอดีระหว่างช่วงเตรียมตัว — ไม่ต้องเปิดตัวเลือกแล้ว
+    prepCountdown.style.display = "none";
+    Object.values(corners).forEach((el) => {
+      el.classList.remove("prep-hidden");
+      el.classList.add("reveal-in");
+    });
+    resetHoldTimer(); // รีเซ็ตอีกรอบตอนเปิดให้ตอบจริง กันเวลาระหว่างช่วงเตรียมตัวสะสมข้ามมา
+    answered = false;
+  }, PREP_MS);
 }
 
 function nextQuestion() {
   questionIndex += 1; // เมื่อครบชุดจะวนกลับไปข้อแรกอัตโนมัติด้วย modulo
   loadQuestion();
+}
+
+const CONFETTI_COLORS = ["#f59e0b", "#3b82f6", "#ec4899", "#10b981", "#a855f7", "#facc15"];
+
+// เอฟเฟกต์ฉลองตอนตอบถูก — เม็ดสีพุ่งกระจายจากกลางจอ (เบามาก แค่ element DOM ธรรมดา + CSS animation
+// ไม่ใช้ library ภายนอก) ลบตัวเองทิ้งอัตโนมัติหลังแอนิเมชันจบ กัน DOM รก
+function triggerConfetti() {
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement("div");
+    p.className = "confetti-particle";
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+    const distance = 90 + Math.random() * 90;
+    p.style.setProperty("--confetti-x", `${Math.cos(angle) * distance}px`);
+    p.style.setProperty("--confetti-y", `${Math.sin(angle) * distance}px`);
+    p.style.setProperty("--confetti-rot", `${Math.random() > 0.5 ? "" : "-"}${360 + Math.random() * 360}deg`);
+    p.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    quizStage.appendChild(p);
+    setTimeout(() => p.remove(), 950);
+  }
 }
 
 function showBonusToast(text) {
@@ -186,7 +247,11 @@ const BONUS_DEMOS = {
 function triggerBonusChallenge() {
   mode = "bonus";
   clearRevealClasses();
+  clearTimeout(prepTimeout);
+  clearInterval(prepCountdownInterval);
+  prepCountdown.style.display = "none";
   questionText.textContent = "";
+  questionLabel.textContent = "🎁 ภารกิจพิเศษ";
 
   const game = nextBonusGame();
   bonusEmoji.textContent = game.emoji;
@@ -242,7 +307,10 @@ function submitAnswer(zone) {
 
   const correctZone = quizStage.dataset.correctZone;
   const isCorrect = zone === correctZone;
-  if (isCorrect) score += 100; // TODO: ให้คะแนนตามความเร็วในการตอบ เหมือน Kahoot
+  if (isCorrect) {
+    score += 100; // TODO: ให้คะแนนตามความเร็วในการตอบ เหมือน Kahoot
+    triggerConfetti();
+  }
 
   Object.entries(corners).forEach(([key, el]) => {
     if (key === correctZone) el.classList.add("correct");
@@ -362,6 +430,8 @@ reviewToggleBtn.addEventListener("click", () => {
 
 function endGame() {
   clearInterval(timerInterval);
+  clearTimeout(prepTimeout);
+  clearInterval(prepCountdownInterval);
   quizStage.style.display = "none";
   endScreen.style.display = "flex";
   finalScoreEl.textContent = score + bonusScore;

@@ -9,6 +9,7 @@
 //
 // การใช้งาน:
 //   startGestureDetection(videoEl, onUpdate, { holdMs, bodySkeleton, onError, onPerf })
+//   holdMs default 1400ms — ปรับขึ้นจาก 800ms หลังครูรายงานว่าเลือกคำตอบผิดง่ายเกิน (เวลาไม่พอแก้ตัว)
 //   onUpdate({ zone, point, progress, confirmed, handLandmarks, poseLandmarks,
 //              handConnections, poseConnections, videoW, videoH })
 
@@ -128,7 +129,7 @@ function pickPointingHand(hands) {
 export async function startGestureDetection(
   videoEl,
   onUpdate,
-  { holdMs = 800, bodySkeleton = true, onError, onPerf } = {}
+  { holdMs = 1400, bodySkeleton = true, onError, onPerf } = {}
 ) {
   try {
     await loadModels({ bodySkeleton });
