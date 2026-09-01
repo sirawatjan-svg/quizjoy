@@ -13,8 +13,14 @@
 
     <div class="panel">
       <div id="room-code-display" style="margin-bottom:12px; color:var(--muted)"></div>
+
+      <!-- ช่องนี้โชว์เฉพาะตอนไม่มีรหัสห้องจาก QR (เช่น เปิดลิงก์เปล่าเอง หรือครูบอกรหัสปากเปล่า) -->
+      <input id="room-code-input" type="text" placeholder="รหัสห้อง (5 ตัวอักษร)" maxlength="5"
+        style="width:100%; margin-bottom:12px; text-transform:uppercase; display:none;" />
+
       <input id="student-name" type="text" placeholder="ชื่อของคุณ" style="width:100%; margin-bottom:12px;" />
       <button id="join-btn" style="width:100%">เข้าห้อง</button>
+      <p id="join-status" style="color:var(--wrong); font-size:0.85rem; margin-top:8px;"></p>
     </div>
 
     <p style="color:var(--muted); font-size:0.85rem;">
@@ -23,25 +29,62 @@
   </div>
 
   <script type="module">
+    import { db, doc, getDoc } from "./assets/js/firebase-init.js";
+
     // อ่าน room code จาก query string ที่ครูฝังไว้ใน QR เช่น index.html?room=AB12
     const params = new URLSearchParams(location.search);
-    const room = params.get("room");
+    let room = params.get("room");
     const display = document.getElementById("room-code-display");
+    const roomInput = document.getElementById("room-code-input");
+    const joinStatus = document.getElementById("join-status");
+    const joinBtn = document.getElementById("join-btn");
+
     if (room) {
       display.textContent = `ห้อง: ${room}`;
     } else {
-      display.textContent = "⚠️ ไม่พบรหัสห้อง — สแกน QR จากครูอีกครั้ง";
+      // ไม่มีรหัสห้องจาก QR — เปิดช่องให้พิมพ์เองแทน (เช่น ครูบอกรหัสปากเปล่า หรือ QR สแกนไม่ติด)
+      display.textContent = "⚠️ ไม่พบรหัสห้องจาก QR — พิมพ์รหัสห้องที่ครูให้มาแทนได้เลย";
+      roomInput.style.display = "block";
     }
 
-    document.getElementById("join-btn").addEventListener("click", () => {
+    joinBtn.addEventListener("click", async () => {
       const name = document.getElementById("student-name").value.trim();
-      if (!name || !room) return;
-      // TODO: เขียน player ลง Firestore sessions/{room}/players/{studentId}
-      const studentId = crypto.randomUUID();
-      sessionStorage.setItem("quizjoy_name", name);
-      sessionStorage.setItem("quizjoy_room", room);
-      sessionStorage.setItem("quizjoy_studentId", studentId);
-      location.href = `student/index.html?room=${encodeURIComponent(room)}`;
+      const typedRoom = roomInput.style.display !== "none" ? roomInput.value.trim().toUpperCase() : "";
+      const roomCode = room || typedRoom;
+
+      joinStatus.textContent = "";
+
+      if (!roomCode) {
+        joinStatus.textContent = "⚠️ กรุณาใส่รหัสห้อง (ขอจากครู หรือสแกน QR ใหม่)";
+        return;
+      }
+      if (!name) {
+        joinStatus.textContent = "⚠️ กรุณากรอกชื่อของคุณ";
+        return;
+      }
+
+      joinBtn.disabled = true;
+      joinBtn.textContent = "กำลังตรวจสอบห้อง...";
+
+      try {
+        const snap = await getDoc(doc(db, "sessions", roomCode));
+        if (!snap.exists()) {
+          joinStatus.textContent = `❌ ไม่พบห้อง "${roomCode}" — ตรวจสอบรหัสห้องกับครูอีกครั้ง (พิมพ์ตัวพิมพ์ใหญ่/เล็กไม่มีผล)`;
+          joinBtn.disabled = false;
+          joinBtn.textContent = "เข้าห้อง";
+          return;
+        }
+
+        const studentId = crypto.randomUUID();
+        sessionStorage.setItem("quizjoy_name", name);
+        sessionStorage.setItem("quizjoy_room", roomCode);
+        sessionStorage.setItem("quizjoy_studentId", studentId);
+        location.href = `student/index.html?room=${encodeURIComponent(roomCode)}`;
+      } catch (err) {
+        joinStatus.textContent = `❌ เชื่อมต่อไม่สำเร็จ: ${err.message}`;
+        joinBtn.disabled = false;
+        joinBtn.textContent = "เข้าห้อง";
+      }
     });
   </script>
 </body>
