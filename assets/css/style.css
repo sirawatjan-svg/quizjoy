@@ -267,15 +267,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
 }
 
+/* จุดติดตามมือ (แบบเบาๆ จุดเดียว ไม่ใช่โครงกระดูกเต็มรูปแบบ — เร็วกว่า เชื่อถือได้กว่า) แสดงทั้งโหมด
+   คำถามและโหมดบอนัส ให้เห็นตลอดว่ากล้องกำลังตามมืออยู่จริง ไม่ใช่ระบบค้าง */
 .hand-cursor {
   position: absolute;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  border: 3px solid white;
+  background: radial-gradient(circle, #4ade80 0%, #22c55e 60%, transparent 100%);
+  border: 3px solid #bbf7d0;
+  box-shadow: 0 0 16px 4px rgba(74, 222, 128, 0.55);
   z-index: 6;
   pointer-events: none;
   transform: translate(-50%, -50%);
+  transition: left 0.05s linear, top 0.05s linear; /* ลื่นขึ้นเล็กน้อยระหว่างเฟรม ไม่ใช่กระโดดแข็งๆ */
 }
 
 .hold-progress {

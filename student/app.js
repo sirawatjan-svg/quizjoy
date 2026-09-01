@@ -275,15 +275,9 @@ function submitAnswer(zone) {
 function onZoneUpdate(frame) {
   const { zone, point, progress, confirmed } = frame;
 
-  if (mode === "bonus") {
-    bonusZoneHandler?.({ zone, point });
-    return;
-  }
-
-  if (answered) return;
-
-  highlightZone(zone);
-
+  // อัปเดตจุดติดตามมือทุกครั้งเสมอ ไม่ว่าจะอยู่โหมดคำถามหรือโหมดบอนัส — เดิมโค้ดนี้ return ก่อนถึงบรรทัดนี้
+  // ตอนอยู่โหมดบอนัส ทำให้ไม่เห็นจุดติดตามเลยระหว่างเล่นมินิเกม (ทั้งที่มินิเกมคือเรื่องขยับมือล้วนๆ)
+  // ดูเหมือนระบบ "ไม่ทำงานคู่ขนานกัน" ทั้งที่จริงๆ กล้องยังจับมืออยู่ตลอด แค่ไม่ได้โชว์ให้เห็น
   if (point) {
     handCursor.style.display = "block";
     handCursor.style.left = `${point.x * 100}%`;
@@ -292,6 +286,14 @@ function onZoneUpdate(frame) {
     handCursor.style.display = "none";
   }
 
+  if (mode === "bonus") {
+    bonusZoneHandler?.({ zone, point });
+    return;
+  }
+
+  if (answered) return;
+
+  highlightZone(zone);
   holdProgressBar.style.width = `${(progress || 0) * 100}%`;
 
   if (confirmed && zone) {
