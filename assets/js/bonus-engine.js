@@ -193,49 +193,45 @@ export function runReachForSky(ctx) {
   }, 10000);
 }
 
-// ============ เกม 3: จังหวะมือ 6-7 (สลับซ้าย-ขวาให้ตรงจังหวะ, BPM เร่งขึ้นเรื่อยๆ) ============
-// หมายเหตุลิขสิทธิ์: ใช้เสียง beep สังเคราะห์เอง (Web Audio API) ไม่ใช้คลิปเพลง/เสียงจากคลิปไวรัลจริง
+// ============ เกม 3: จังหวะมือ 6-7 (อิสระ ไม่บังคับจังหวะ) ============
+// v3: ตัดระบบ BPM/จังหวะ/เสียงบี๊บออกทั้งหมดตามคำขอครู — อ้างอิงแนวทางจากงาน Science Day
+// ม.แม่โจ้ เชียงใหม่ ที่ให้เด็กยกมือขึ้น-ลงตามจังหวะของตัวเอง ไม่กดดันเรื่องเวลา วัดแค่ว่า "สลับฝั่งสำเร็จ
+// กี่ครั้ง" เท่านั้น (v2 เดิมบังคับจับจังหวะในหน้าต่าง ±250ms ต่อบีต ซึ่งพบว่าทำให้เครื่อง Android ที่
+// ประมวลผลช้ากว่าเสียเปรียบมาก — คะแนนโบนัสต่างกันถึง ~5.5 เท่าระหว่าง iPhone/Android ทั้งที่ความแม่นยำ
+// คำถามปกติเท่ากันเป๊ะ พิสูจน์ว่าปัญหาอยู่ที่ "หน้าต่างเวลาแคบเกินไป" ไม่ใช่ความแม่นยำของท่าทาง)
 //
-// v2: เปลี่ยนจาก "ชี้ซ้าย/ขวา" เป็น "ยกมือขึ้น-ลง" ตามฟีดแบ็กครู — ตรงกับท่าจริงของเทรนด์ 6-7
-// (ท่าเหมือนตาชั่ง ยกมือสลับขึ้น-ลง ไม่ใช่ชี้ซ้ายขวา) ใช้โซนบน (tl+tr) แทน "ขึ้น" และโซนล่าง (bl+br) แทน "ลง"
+// ใช้ zone เดิม (ผ่านการปรับเทียบจาก calibration แล้ว) tl/tr = โซนบน, bl/br = โซนล่าง — ตั้งใจไม่โหลด
+// โมเดล pose/skeleton เพิ่มเพื่อตรวจท่าทาง (เคยลองแล้วพบว่าทำให้ FPS ตกและมือจับแม่นน้อยลง โดยเฉพาะ
+// เครื่องกลาง-ล่าง คือปัญหาสายเดียวกับที่กำลังจะแก้ ถ้าเปิดโมเดลหนักเพิ่มอาจยิ่งซ้ำเติม Android)
 export function runHandBounce(ctx) {
   const { corners, onScore, onEnd } = ctx;
   const DURATION_MS = 10000;
-  const START_BPM = 100;
-  const END_BPM = 140;
+  const MIN_SWITCH_GAP_MS = 150; // กันนับซ้ำเร็วเกินจริงจากมือสั่นเบาๆ (hysteresis ของ pointToZone กันไว้ชั้นหนึ่งแล้ว อันนี้กันซ้ำอีกชั้น)
   const upZones = ["tl", "tr"];
   const downZones = ["bl", "br"];
 
-  let side = "up";
-  let beatTime = 0;
-  let beatScored = false;
-  let beatTimeout = null;
-  const startTime = performance.now();
-  let audioCtx = null;
+  let currentSide = null; // "up" | "down" | null (ยังไม่เคยจับฝั่งได้เลย)
+  let lastSwitchTs = 0;
+  let endTimeout = null;
 
   resetCornerLabels(corners, { tl: "⬆️", tr: "⬆️", bl: "⬇️", br: "⬇️" });
 
   function cleanup() {
-    clearTimeout(beatTimeout);
+    clearTimeout(endTimeout);
     ctx.setZoneHandler(null);
     resetCornerLabels(corners);
     ctx.onCleanupExtra?.();
   }
 
-  function beep(freq) {
-    try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.15);
-    } catch {
-      // บาง browser ต้องมี user gesture ก่อนถึงเล่นเสียงได้ — ปล่อยผ่านเงียบๆ ไม่กระทบ gameplay
-    }
+  function finish() {
+    cleanup();
+    onEnd();
+  }
+
+  function zoneToSide(zone) {
+    if (upZones.includes(zone)) return "up";
+    if (downZones.includes(zone)) return "down";
+    return null;
   }
 
   function highlightSide(activeSide) {
@@ -245,42 +241,32 @@ export function runHandBounce(ctx) {
     });
   }
 
-  function scheduleBeat() {
-    const elapsed = performance.now() - startTime;
-    if (elapsed >= DURATION_MS) {
-      cleanup();
-      onEnd();
+  // เรียกทุกเฟรมที่มีโซนจากมือ/แตะจอ — ครั้งแรกแค่จำฝั่งเริ่มต้นไว้ (ยังไม่ได้แต้ม) ต้องสลับฝั่งจริง
+  // อย่างน้อย 1 ครั้งถึงจะเริ่มนับ ป้องกันได้แต้มฟรีจากการ "อยู่เฉยๆ" ตอนเริ่มเกม
+  function registerSide(side) {
+    if (!side || side === currentSide) return;
+
+    if (currentSide === null) {
+      currentSide = side;
+      highlightSide(side);
       return;
     }
-    const progress = elapsed / DURATION_MS;
-    const bpm = START_BPM + (END_BPM - START_BPM) * progress;
-    const intervalMs = 60000 / bpm;
 
-    side = side === "up" ? "down" : "up";
-    beatTime = performance.now();
-    beatScored = false;
+    const now = performance.now();
+    if (now - lastSwitchTs < MIN_SWITCH_GAP_MS) return;
+
+    lastSwitchTs = now;
+    currentSide = side;
     highlightSide(side);
-    beep(side === "up" ? 660 : 440); // เสียงสูง = ขึ้น, เสียงต่ำ = ลง ให้ตรงสัญชาตญาณ
-
-    beatTimeout = setTimeout(scheduleBeat, intervalMs);
+    onScore(20); // คงที่ต่อการสลับฝั่งสำเร็จ 1 ครั้ง ไม่ผูกกับความเร็ว/จังหวะแล้ว — เร็วช้าตามตัวเด็กเอง
   }
 
-  function onHitSide(hitSide) {
-    if (beatScored || hitSide !== side) return; // ผิดจังหวะ/ให้คะแนนไปแล้ว: ไม่ตัดคะแนน ปล่อยผ่าน
-    const dt = Math.abs(performance.now() - beatTime);
-    if (dt <= 250) {
-      beatScored = true;
-      onScore(dt <= 100 ? 30 : 15);
-    }
-  }
+  ctx.setZoneHandler(({ zone }) => registerSide(zoneToSide(zone)));
 
-  ctx.setZoneHandler(({ zone }) => {
-    if (zone) onHitSide(upZones.includes(zone) ? "up" : "down");
-  });
-
+  // tap fallback: แตะสลับบน/ล่างเอง ใช้กติกาเดียวกันทุกอย่างกับทาง gesture (registerSide ร่วมกัน)
   const tapHandlers = {};
   Object.entries(corners).forEach(([zone, el]) => {
-    const handler = () => onHitSide(upZones.includes(zone) ? "up" : "down");
+    const handler = () => registerSide(zoneToSide(zone));
     tapHandlers[zone] = handler;
     el.addEventListener("click", handler);
   });
@@ -290,7 +276,7 @@ export function runHandBounce(ctx) {
     );
   };
 
-  scheduleBeat();
+  endTimeout = setTimeout(finish, DURATION_MS);
 }
 
 // ============ เกม 4: ตามท่ามือ (Simon Says โซน — ลำดับยาวขึ้นทุกรอบ) ============

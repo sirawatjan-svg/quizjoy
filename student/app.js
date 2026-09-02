@@ -416,7 +416,7 @@ function showBonusToast(text) {
 const BONUS_DEMOS = {
   "hand-bounce": {
     anim: "anim-updown",
-    caption: "ยกมือขึ้น-ลง สลับจังหวะแบบนี้!",
+    caption: "ยกมือขึ้น-ลงสลับไปเรื่อยๆ ตามจังหวะของตัวเองเลย!", // ไม่มีบีตบังคับแล้ว เร็วช้าได้ตามใจ
     durationMs: 3200,
   },
 };

@@ -17,7 +17,7 @@
   <div>
     <button id="btn-skibidi">Test Skibidi Dodge (perfect play)</button>
     <button id="btn-sky">Test Reach for Sky (hold hand up)</button>
-    <button id="btn-bounce">Test Hand Bounce (hit every beat on time)</button>
+    <button id="btn-bounce">Test Hand Bounce (switch sides freely, no beat)</button>
     <button id="btn-dance">Test Hand Dance Follow (perfect play)</button>
     <button id="btn-brainrot">Test Brainrot Swat (hit everything instantly)</button>
     <button id="btn-all">Run All</button>
@@ -110,7 +110,7 @@
     }
 
     async function testHandBounce() {
-      log("\n=== Hand Bounce (v2: ขึ้น-ลง): ต้องรู้จังหวะ beat ล่วงหน้าไม่ได้ (engine สุ่ม/ปรับ BPM เอง) — แทนด้วยการยิงทั้งสองฝั่งรัวๆ ===");
+      log("\n=== Hand Bounce (v3: อิสระ ไม่มี BPM/จังหวะแล้ว): ยิงสลับบน/ล่างรัวๆ ทุก 80ms — คาดว่าจะได้แต้ม\n     ทุกครั้งที่สลับฝั่งจริงและห่างจากครั้งก่อนอย่างน้อย 150ms (MIN_SWITCH_GAP_MS) เท่านั้น ===");
       const { ctx, fireZone } = makeCtx("Hand Bounce");
       runHandBounce(ctx);
       const start = Date.now();
