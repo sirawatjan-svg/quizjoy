@@ -35,12 +35,18 @@ html { margin: 0; padding: 0; }
 body {
   margin: 0;
   font-family: "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
-  /* พื้นหลังเดิมสีทึบเรียบๆ สีเดียว เพิ่มแสงเรือง 2 จุด (ม่วง/เขียวอมฟ้า) จางๆ มุมบน-ล่าง ให้มีมิติ
-     ขึ้นโดยไม่รบกวนการอ่าน — ยังคงมืดสนิทพอสำหรับใช้ในห้องเรียน/เห็นกล้องชัดเหมือนเดิม */
+  /* พื้นหลังเดิมสีทึบเรียบๆ สีเดียว เพิ่มแสงเรือง 2 จุด (ม่วง/เขียวอมฟ้า) จางๆ มุมบน-ล่าง + ลายจุดจางๆ
+     ทั่วทั้งหน้า ให้มีมิติ/ความเป็นแบรนด์ขึ้นโดยไม่รบกวนการอ่าน (อ้างอิงพื้นหลังมีลายของ Kahoot/Blooket
+     แทนสีเรียบๆ ล้วน) ใส่ที่ body เลยไม่ใช่แค่ .screen เพราะหน้าครูจอกว้าง (host.html ฯลฯ) ก็ควรรู้สึก
+     ว่าตั้งใจออกแบบมาให้เต็มจอ ไม่ใช่แค่การ์ดแคบๆ ลอยอยู่กลางพื้นที่ว่างเปล่า — ยังมืดสนิทพอสำหรับ
+     ใช้ในห้องเรียน/เห็นกล้องชัดเหมือนเดิม (หน้าเล่นเกมจริง .quiz-stage ทับด้วยภาพกล้องเต็มจออยู่แล้ว) */
   background:
     radial-gradient(ellipse 900px 500px at 15% -10%, color-mix(in srgb, var(--bg-glow-1) 55%, transparent), transparent),
     radial-gradient(ellipse 900px 600px at 90% 110%, color-mix(in srgb, var(--bg-glow-2) 50%, transparent), transparent),
+    radial-gradient(circle, rgba(255, 255, 255, 0.045) 1.5px, transparent 1.5px) 0 0 / 26px 26px,
     var(--bg);
+  /* ไม่ใช้ background-attachment:fixed — รู้กันดีว่าทำให้เลื่อนหน้าจอกระตุกบนมือถือ/เครื่องอ่อนแอ
+     บางรุ่น ซึ่งเป็นปัญหาสายเดียวกับที่ครูกำลังบ่นเรื่อง FPS ต่ำอยู่แล้ว ไม่อยากซ้ำเติม */
   color: var(--text);
   min-height: 100vh;
   min-height: 100dvh;
@@ -59,6 +65,21 @@ h1, h2, h3, .question-label, .room-code-big {
   padding: 24px;
   gap: 16px;
   text-align: center;
+}
+
+/* หัวข้อ/โลโก้หลักที่ต้องการความโดดเด่นที่สุดในหน้า — ตอนแรกลองทำ "ตัวอักษรสติกเกอร์" แบบ Kahoot/
+   Blooket (ขอบหนาสีเข้ม+เงา) แต่เทคนิคนั้นออกแบบมาให้ใช้บนพื้นหลังสว่าง/สีสด ส่วนเราตัวอักษรเป็นสีขาว
+   บนพื้นหลังมืดอยู่แล้ว ขอบสีเข้มเลยจมไปกับพื้นหลัง มองไม่เห็นผลต่างเลย — เปลี่ยนมาใช้ไล่สีสดใน
+   ตัวอักษรเอง (gradient text fill) + เงาเรืองแสงสีเดียวกันแทน ซึ่งเป็นเทคนิคที่ใช้ได้ผลจริงบนพื้นมืด */
+.sticker-text {
+  font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+  font-weight: 700;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 14px rgba(139, 124, 246, 0.45));
+  letter-spacing: 0.01em;
 }
 
 input, button {
@@ -251,10 +272,15 @@ button:disabled {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   border-radius: var(--radius-lg);
   z-index: 5;
-  /* เงาเข้มด้านล่าง + ไฮไลต์มันวาวด้านบน ให้ความรู้สึกเหมือนปุ่มจริงมีความหนา ไม่ใช่แผ่นสีแบนๆ */
-  box-shadow: var(--shadow-md), inset 0 2px 0 rgba(255, 255, 255, 0.45), inset 0 -10px 18px rgba(0, 0, 0, 0.12);
+  /* ไฮไลต์มันวาวด้านบน + เงาด้านนอก ให้ความรู้สึกเหมือนปุ่มจริงมีความหนา ไม่ใช่แผ่นสีแบนๆ — ตั้งใจใช้
+     แค่ 2 เลเยอร์เงา (ไม่ใช่ 3 เหมือนที่เคยลอง) เพราะครูรายงานว่าเครื่อง Android ที่กล้องกินซีพียูหนัก
+     อยู่แล้วรู้สึกกระตุกตอนคำตอบ pop เข้ามา — เงาเยอะชั้น + inset ยิ่งวาดซ้ำแพงเวลาจอเครื่องอ่อนแอ */
+  box-shadow: var(--shadow-md), inset 0 2px 0 rgba(255, 255, 255, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.2);
   background-blend-mode: overlay;
+  /* บอกเบราว์เซอร์ล่วงหน้าว่า transform/opacity จะเปลี่ยน ให้จัดเลเยอร์แยกไว้ก่อนเริ่มแอนิเมชัน pop-in
+     กันไม่ให้ต้อง repaint เงา/พื้นหลังใหม่ทุกเฟรมระหว่าง scale — ตัวช่วยลดอาการกระตุกตอนคำตอบโผล่ */
+  will-change: transform, opacity;
   transition: transform 0.15s ease, background 0.2s ease, opacity 0.3s ease, box-shadow 0.2s ease;
 }
 

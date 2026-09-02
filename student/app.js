@@ -89,7 +89,7 @@ let lobbyPlayersUnsub = null;
 // จังหวะที่ 0 (ใหม่ ตามฟีดแบ็กครู): คำถามโผล่กลางจอใหญ่ๆ ให้อ่านชัดๆ ก่อน แล้วค่อย "บิน" ย่อขึ้นไป
 // อยู่แถบบน (question-bar) จากนั้นค่อยนับถอยหลัง 2-1 (ลดจากเดิม 3-2-1 เพราะช่วง intro ก็ให้เวลาอ่านไปแล้ว
 // ส่วนหนึ่ง ไม่อยากให้รวมแล้วช้ากว่าเดิมมาก)
-const QUESTION_INTRO_SHOW_MS = 800;
+const QUESTION_INTRO_SHOW_MS = 2200; // ครูรายงานว่าโผล่มาแวบเดียวแล้วหายไป อ่านไม่ทัน (เดิม 800ms สั้นไป)
 const QUESTION_INTRO_FLY_MS = 450;
 const PREP_COUNTDOWN_START = 2;
 const PREP_MS = QUESTION_INTRO_SHOW_MS + QUESTION_INTRO_FLY_MS + PREP_COUNTDOWN_START * 1000; // รวมเวลาตั้งแต่ขึ้นคำถามใหม่จนถึงเปิดให้ตอบได้จริง
@@ -278,8 +278,12 @@ async function saveProgress(extra = {}) {
 
 async function setupCamera() {
   try {
+    // ลดความละเอียดที่ขอจากกล้องลง (เดิม 640x480 คงที่) — MediaPipe ย่อภาพลงไปประมวลผลภายในอยู่แล้ว
+    // ความละเอียดสูงกว่านั้นไม่ได้ช่วยความแม่นยำของการจับมือเลย แต่เพิ่มภาระถอดรหัส/คัดลอกเฟรมทุกครั้ง
+    // ก่อนถึง MediaPipe — ครูรายงาน FPS ต่ำต่อเนื่อง (~14fps) บนเครื่อง Android รุ่นกลาง-ล่าง จึงลองลด
+    // ภาระตรงนี้ก่อน ใช้ ideal (ไม่ใช่ exact) ให้เครื่องที่รองรับความละเอียดต่ำกว่านี้อยู่แล้วไม่พังด้วย
     mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user", width: 640, height: 480 },
+      video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 360 } },
       audio: false,
     });
     previewVideo.srcObject = mediaStream;
