@@ -1,16 +1,32 @@
+/* ปรับชุดสี/ระยะห่าง/เงาใหม่ทั้งระบบ (2026-09) ตามฟีดแบ็กครูว่าของเดิม "ดูไม่มืออาชีพ" — สีเดิม
+   (slate + indigo ธรรมดา) คือค่าเริ่มต้นของ Tailwind ตรงๆ ไม่ได้ปรับแต่งเลย เปลี่ยนเป็นชุดสีที่เลือกมาให้
+   เข้ากันเป็นชุดเดียวกันจริงๆ (ไม่ใช่สุ่มเลือกทีละสี) + เพิ่มตัวแปรเงา/ขอบมนไว้ใช้ซ้ำให้ทุกจุดสม่ำเสมอกัน */
 :root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --accent: #6366f1;
-  --correct: #22c55e;
-  --wrong: #ef4444;
-  --tl: #f59e0b; /* top-left */
-  --tr: #3b82f6; /* top-right */
-  --bl: #ec4899; /* bottom-left */
-  --br: #10b981; /* bottom-right */
+  --bg: #0a0e1a;
+  --bg-glow-1: #241a3d;
+  --bg-glow-2: #0d2e35;
+  --panel: #171f33;
+  --panel-border: rgba(255, 255, 255, 0.07);
+  --text: #f5f7fc;
+  --muted: #97a1bd;
+  --accent: #8b7cf6;
+  --accent-2: #f472b6;
+  --accent-gradient: linear-gradient(135deg, #8b7cf6, #a78bfa 55%, #f472b6);
+  --correct: #34d399;
+  --wrong: #fb7185;
+  --tl: #ff8a5c; /* top-left: ส้มอบอุ่น */
+  --tr: #4da3ff; /* top-right: ฟ้าสด */
+  --bl: #f0529c; /* bottom-left: ชมพูบานเย็น */
+  --br: #2dd4a0; /* bottom-right: เขียวมรกต */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.48);
 }
+
+@import url("https://fonts.googleapis.com/css2?family=Mitr:wght@500;600;700&family=Sarabun:wght@400;500;600;700&display=swap");
 
 * { box-sizing: border-box; }
 
@@ -19,10 +35,19 @@ html { margin: 0; padding: 0; }
 body {
   margin: 0;
   font-family: "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
-  background: var(--bg);
+  /* พื้นหลังเดิมสีทึบเรียบๆ สีเดียว เพิ่มแสงเรือง 2 จุด (ม่วง/เขียวอมฟ้า) จางๆ มุมบน-ล่าง ให้มีมิติ
+     ขึ้นโดยไม่รบกวนการอ่าน — ยังคงมืดสนิทพอสำหรับใช้ในห้องเรียน/เห็นกล้องชัดเหมือนเดิม */
+  background:
+    radial-gradient(ellipse 900px 500px at 15% -10%, color-mix(in srgb, var(--bg-glow-1) 55%, transparent), transparent),
+    radial-gradient(ellipse 900px 600px at 90% 110%, color-mix(in srgb, var(--bg-glow-2) 50%, transparent), transparent),
+    var(--bg);
   color: var(--text);
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+h1, h2, h3, .question-label, .room-code-big {
+  font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
 }
 
 .screen {
@@ -39,23 +64,42 @@ body {
 input, button {
   font-family: inherit;
   font-size: 1rem;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   border: none;
   padding: 12px 16px;
 }
 
+input {
+  background: rgba(255, 255, 255, 0.96);
+  color: #14182b;
+}
+input::placeholder { color: #7b8199; }
+
 button {
-  background: var(--accent);
+  background: var(--accent-gradient);
   color: white;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
 }
+button:hover { filter: brightness(1.08); }
+button:active { transform: translateY(1px) scale(0.98); box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
 
-button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
 
 .panel {
   background: var(--panel);
-  border-radius: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   padding: 20px;
   width: 100%;
   max-width: 420px;
@@ -201,11 +245,15 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   justify-content: center;
   padding: 10px;
   font-weight: 700;
+  font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
   font-size: 0.95rem;
-  border-radius: 18px;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-lg);
   z-index: 5;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
-  border: 1px solid rgba(255,255,255,0.15);
+  /* เงาเข้มด้านล่าง + ไฮไลต์มันวาวด้านบน ให้ความรู้สึกเหมือนปุ่มจริงมีความหนา ไม่ใช่แผ่นสีแบนๆ */
+  box-shadow: var(--shadow-md), inset 0 2px 0 rgba(255, 255, 255, 0.45), inset 0 -10px 18px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   background-blend-mode: overlay;
   transition: transform 0.15s ease, background 0.2s ease, opacity 0.3s ease, box-shadow 0.2s ease;
 }
@@ -343,6 +391,27 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-bottom: 6px;
   font-size: 0.9rem;
 }
+
+/* เหรียญรางวัลอันดับ 1-3 แบบ CSS ล้วนๆ (ไม่ใช้อีโมจิ 🥇🥈🥉) — อีโมจิพวกนี้หน้าตาไม่เหมือนกันเลยข้าม
+   iOS/Android/Windows ในห้องเดียวกัน (เห็นชัดเวลาโปรเจกเตอร์ครูโชว์คู่กับจอนักเรียน) เหรียญแบบ CSS
+   หน้าตาเหมือนกันเป๊ะทุกเครื่อง ดูเป็นชุดเดียวกันมากกว่า */
+.medal-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+  margin-right: 6px;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  vertical-align: -4px;
+}
+.medal-badge.medal-1 { background: linear-gradient(150deg, #ffe89a, #d9a441); color: #4a3300; }
+.medal-badge.medal-2 { background: linear-gradient(150deg, #f1f5f9, #aab4c4); color: #2a2f3a; }
+.medal-badge.medal-3 { background: linear-gradient(150deg, #e7ab7a, #a9662e); color: #3a2408; }
 
 /* ตัวอย่างท่าทางเคลื่อนไหว โชว์ตอนนับถอยหลังก่อนเริ่มมินิเกม แทนคำอธิบายเฉยๆ
    ให้เด็กเห็นภาพว่าต้องทำท่าไหนจริงๆ ก่อนเริ่มเล่น */

@@ -41,12 +41,22 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function resetCornerLabels(corners, emojiMap = {}) {
+// รับได้ทั้งอีโมจิ (string เดิม) และ HTML/SVG (เช่น ICON_UP/ICON_DOWN ด้านล่าง) — ใช้ innerHTML แทน
+// textContent เพื่อให้แปะไอคอน SVG ได้ ปลอดภัยเพราะ markup มาจากค่าคงที่ในไฟล์นี้เองเท่านั้น ไม่ใช่
+// input จากผู้ใช้
+function resetCornerLabels(corners, contentMap = {}) {
   Object.entries(corners).forEach(([zone, el]) => {
-    el.textContent = emojiMap[zone] ?? "";
+    el.innerHTML = contentMap[zone] ?? "";
     el.classList.remove("correct", "wrong", "target");
   });
 }
+
+// ลูกศรขึ้น/ลงแบบ SVG แทนอีโมจิ ⬆️⬇️ — อีโมจิหน้าตาไม่เหมือนกันข้าม iOS/Android/Windows (เห็นชัดเทียบ
+// กันในห้องเดียวกัน) SVG นี้ใช้ currentColor รับสีจาก .answer-corner (ขาว) หน้าตาเหมือนกันเป๊ะทุกเครื่อง
+const ICON_UP =
+  '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>';
+const ICON_DOWN =
+  '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
 // ============ เกม 1: ไล่จับ Skibidi (reaction game, 6 รอบ เร็วขึ้นเรื่อยๆ) ============
 export function runSkibidiDodge(ctx) {
@@ -219,7 +229,7 @@ export function runHandBounce(ctx) {
   let lastSwitchTs = 0;
   let endTimeout = null;
 
-  resetCornerLabels(corners, { tl: "⬆️", tr: "⬆️", bl: "⬇️", br: "⬇️" });
+  resetCornerLabels(corners, { tl: ICON_UP, tr: ICON_UP, bl: ICON_DOWN, br: ICON_DOWN });
 
   function cleanup() {
     clearTimeout(endTimeout);

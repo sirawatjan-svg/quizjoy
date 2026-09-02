@@ -205,10 +205,10 @@
         liveScoreList.innerHTML = '<li style="color:var(--muted)">ยังไม่มีใครตอบ...</li>';
         return;
       }
-      const medals = ["🥇", "🥈", "🥉"];
       liveScoreList.innerHTML = sorted
         .map((r, i) => {
-          const label = gameEndedFlag && i < 3 ? medals[i] : `${i + 1}.`;
+          const label =
+            gameEndedFlag && i < 3 ? `<span class="medal-badge medal-${i + 1}">${i + 1}</span>` : `${i + 1}.`;
           const total = (r.score ?? 0) + (r.bonusScore ?? 0);
           return `<li>${label} ${r.name ?? "?"} — ${total} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`;
         })

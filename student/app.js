@@ -684,9 +684,11 @@ async function showRankAndPodium() {
 
     const top3 = all.slice(0, 3);
     if (top3.length > 0) {
-      const medals = ["🥇", "🥈", "🥉"];
       podiumListEl.innerHTML = top3
-        .map((r, i) => `<li>${medals[i]} ${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน</li>`)
+        .map(
+          (r, i) =>
+            `<li><span class="medal-badge medal-${i + 1}">${i + 1}</span> ${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน</li>`
+        )
         .join("");
       podiumPanelEl.style.display = "block";
     }
