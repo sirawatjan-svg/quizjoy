@@ -585,7 +585,11 @@ function onZoneUpdate(frame) {
   }
 
   if (mode === "bonus") {
-    bonusZoneHandler?.({ zone, point });
+    // บั๊กจริงที่เพิ่งเจอ: ตอนเพิ่มระบบติดตาม 2 มือ (frame.hands) ให้ bonus-engine.js ใช้ ลืมส่ง hands
+    // มาที่นี่ด้วย! ส่งแต่ zone/point แบบเดิม ทำให้ runHandBounce() ตกไปใช้ทาง fallback (มือเดียว)
+    // ตลอดมาโดยไม่รู้ตัว การแก้ "ใช้ 2 มือ" ที่ทำไปก่อนหน้านี้เลย "ไม่มีผลจริง" เลยสักครั้งตั้งแต่ขึ้นเว็บ
+    // — อธิบายได้ว่าทำไมครูรายงานว่า 67 ยังจับไม่ติดเหมือนเดิมทุกประการหลังแก้ไปแล้ว
+    bonusZoneHandler?.({ zone, point, hands });
     return;
   }
 
