@@ -148,6 +148,50 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   50% { transform: scale(1.15); opacity: 0.75; }
 }
 
+/* คำถามโผล่กลางจอก่อน (ใหญ่ เด่น อ่านง่าย) แล้วค่อย "บิน" ขึ้นไปย่อตัวเป็นแถบบน (.question-bar) —
+   ไม่ได้วัดตำแหน่งจริงของ .question-bar มาคำนวณ transform ให้เป๊ะ (ซับซ้อนเกินจำเป็นและพังง่ายเวลาจอ
+   ขนาดต่างกัน) ใช้วิธี fade ข้ามกันแทน: อันนี้เลื่อนขึ้น+หด+จางหายไป พร้อมๆ กับที่ .question-bar จริง
+   ค่อยๆ จางเข้ามาแทนที่ ดูจากสายตาแล้วเนียนพอ ไม่ต้องเป๊ะพิกเซล */
+.question-intro {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 48px;
+  text-align: center;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.35;
+  background: rgba(15, 23, 42, 0.55);
+  opacity: 0;
+  pointer-events: none;
+}
+.question-intro.intro-show {
+  animation: question-intro-in 0.35s ease forwards;
+}
+.question-intro.intro-fly-up {
+  animation: question-intro-fly-up 0.45s cubic-bezier(0.4, 0, 0.7, 1) forwards;
+}
+@keyframes question-intro-in {
+  from { opacity: 0; transform: scale(0.82); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes question-intro-fly-up {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-42vh) scale(0.4); }
+}
+
+/* .question-bar เริ่มจากโปร่งใสระหว่างช่วง intro โผล่กลางจอ แล้วค่อยเฟดเข้ามาพร้อมจังหวะที่ intro
+   บินขึ้น (ดู loadQuestion() ใน student/app.js) — ให้ความรู้สึกเหมือนคำถามค่อยๆ ย่อตัวขึ้นไปอยู่ข้างบน */
+.question-bar {
+  transition: opacity 0.4s ease;
+}
+.question-bar.bar-pending {
+  opacity: 0;
+}
+
 .answer-corner {
   position: absolute;
   width: 32%;

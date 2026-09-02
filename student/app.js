@@ -22,6 +22,8 @@ const handCursor = document.getElementById("hand-cursor");
 const holdProgressBar = document.getElementById("hold-progress-bar");
 const questionText = document.getElementById("question-text");
 const questionLabel = document.getElementById("question-label");
+const questionBar = document.getElementById("question-bar");
+const questionIntro = document.getElementById("question-intro");
 const prepCountdown = document.getElementById("prep-countdown");
 const timerBadge = document.getElementById("timer-badge");
 const finalScoreEl = document.getElementById("final-score");
@@ -58,10 +60,18 @@ let timerInterval = null;
 let answerHistory = []; // { questionId, selectedZone, isCorrect, answeredAt } ทุกครั้งที่ตอบ ใช้ทำหน้าเฉลยย้อนหลัง
 
 // --- Kahoot-style: โชว์คำถามอย่างเดียวก่อน แล้วค่อยเปิดตัวเลือกทีหลัง (จังหวะที่ 2) ---
-const PREP_MS = 3000; // 3 วิ ให้อ่านคำถามก่อนตัวเลือกจะโผล่ (นับถอยหลัง 3-2-1 ให้เห็นด้วย)
+// จังหวะที่ 0 (ใหม่ ตามฟีดแบ็กครู): คำถามโผล่กลางจอใหญ่ๆ ให้อ่านชัดๆ ก่อน แล้วค่อย "บิน" ย่อขึ้นไป
+// อยู่แถบบน (question-bar) จากนั้นค่อยนับถอยหลัง 2-1 (ลดจากเดิม 3-2-1 เพราะช่วง intro ก็ให้เวลาอ่านไปแล้ว
+// ส่วนหนึ่ง ไม่อยากให้รวมแล้วช้ากว่าเดิมมาก)
+const QUESTION_INTRO_SHOW_MS = 800;
+const QUESTION_INTRO_FLY_MS = 450;
+const PREP_COUNTDOWN_START = 2;
+const PREP_MS = QUESTION_INTRO_SHOW_MS + QUESTION_INTRO_FLY_MS + PREP_COUNTDOWN_START * 1000; // รวมเวลาตั้งแต่ขึ้นคำถามใหม่จนถึงเปิดให้ตอบได้จริง
 let totalQuestionsShown = 0; // นับเพิ่มทุกครั้งที่ขึ้นคำถามใหม่ (ไม่ใช้ questionIndex ตรงๆ เพราะมันวนซ้ำ)
 let prepTimeout = null;
 let prepCountdownInterval = null;
+let introFlyTimeout = null;
+let introCountdownTimeout = null;
 
 // --- Bonus Challenge state ---
 let mode = "quiz"; // "quiz" | "bonus" | "calib"
@@ -229,6 +239,8 @@ function loadQuestion() {
   clearRevealClasses();
   clearTimeout(prepTimeout);
   clearInterval(prepCountdownInterval);
+  clearTimeout(introFlyTimeout);
+  clearTimeout(introCountdownTimeout);
 
   // จังหวะที่ 1 (แบบ Kahoot): โชว์คำถามอย่างเดียวก่อน ซ่อนตัวเลือกไว้ ยังตอบไม่ได้
   answered = true;
@@ -255,14 +267,35 @@ function loadQuestion() {
     el.classList.add("prep-hidden");
   });
 
-  let remaining = 3;
-  prepCountdown.style.display = "block";
-  prepCountdown.textContent = remaining;
-  prepCountdownInterval = setInterval(() => {
-    remaining -= 1;
-    if (remaining > 0) prepCountdown.textContent = remaining;
-    else clearInterval(prepCountdownInterval);
-  }, 1000);
+  // จังหวะที่ 0: คำถามโผล่กลางจอใหญ่ๆ ก่อน (อ่านง่ายชัดเจน) — question-bar จริงยังโปร่งใสอยู่
+  prepCountdown.style.display = "none";
+  questionIntro.textContent = q.text;
+  questionIntro.classList.remove("intro-fly-up");
+  // reflow บังคับก่อนใส่ class ใหม่ กัน browser รวม "remove แล้ว add" เป็นสเต็ปเดียวจนไม่เล่นแอนิเมชันซ้ำ
+  // (สำคัญเวลาคำถามก่อนหน้าเพิ่งเล่น intro-fly-up ค้างอยู่แล้วขึ้นคำถามใหม่ทันที)
+  void questionIntro.offsetWidth;
+  questionIntro.classList.add("intro-show");
+  questionBar.classList.add("bar-pending");
+
+  // จังหวะที่ 0.5: คำถาม "บิน" ย่อขึ้นไปอยู่แถบบน พร้อมๆ กับที่แถบบนจริงเฟดเข้ามาแทนที่
+  introFlyTimeout = setTimeout(() => {
+    questionIntro.classList.remove("intro-show");
+    questionIntro.classList.add("intro-fly-up");
+    questionBar.classList.remove("bar-pending");
+  }, QUESTION_INTRO_SHOW_MS);
+
+  // จังหวะที่ 1: นับถอยหลังสั้นๆ ในแถบบน ก่อนเปิดตัวเลือก (เริ่มหลัง intro บินขึ้นเสร็จ)
+  introCountdownTimeout = setTimeout(() => {
+    questionIntro.classList.remove("intro-fly-up");
+    let remaining = PREP_COUNTDOWN_START;
+    prepCountdown.style.display = "block";
+    prepCountdown.textContent = remaining;
+    prepCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      if (remaining > 0) prepCountdown.textContent = remaining;
+      else clearInterval(prepCountdownInterval);
+    }, 1000);
+  }, QUESTION_INTRO_SHOW_MS + QUESTION_INTRO_FLY_MS);
 
   // จังหวะที่ 2: เปิดตัวเลือกให้ตอบได้จริง
   prepTimeout = setTimeout(() => {
@@ -325,7 +358,13 @@ function triggerBonusChallenge() {
   clearRevealClasses();
   clearTimeout(prepTimeout);
   clearInterval(prepCountdownInterval);
+  clearTimeout(introFlyTimeout);
+  clearTimeout(introCountdownTimeout);
   prepCountdown.style.display = "none";
+  // โหมดบอนัสไม่ใช้จังหวะคำถามกลางจอ — เคลียร์ทิ้งเผื่อค้างจากคำถามก่อนหน้าพอดี (เช่นเวลาหมดกลาง intro)
+  questionIntro.classList.remove("intro-show", "intro-fly-up");
+  questionIntro.textContent = "";
+  questionBar.classList.remove("bar-pending");
   questionText.textContent = "";
   questionLabel.textContent = "🎁 ภารกิจพิเศษ";
 
@@ -527,6 +566,8 @@ function endGame() {
   clearInterval(timerInterval);
   clearTimeout(prepTimeout);
   clearInterval(prepCountdownInterval);
+  clearTimeout(introFlyTimeout);
+  clearTimeout(introCountdownTimeout);
   quizStage.style.display = "none";
   endScreen.style.display = "flex";
   finalScoreEl.textContent = score + bonusScore;
