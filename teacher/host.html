@@ -60,9 +60,18 @@
       </p>
     </div>
 
+    <!-- ล็อบบี้: รอผู้เล่นเข้าห้อง แล้วครูกดเริ่มเองให้ทุกคนเริ่มพร้อมกัน (เดิมแต่ละคนกดเริ่มเอง
+         นาฬิกาต่างคนต่างเดิน ไม่ซิงค์กันเลย) -->
+    <div class="panel" id="lobby-panel" style="display:none;">
+      <h3>👥 ผู้เล่นที่เข้าห้องแล้ว (<span id="lobby-count">0</span>)</h3>
+      <ul id="lobby-player-list" style="list-style:none; padding:0; margin:0 0 12px;"></ul>
+      <button id="start-game-btn" style="width:100%;">🚀 เริ่มเกมพร้อมกัน</button>
+      <p id="lobby-status" style="color:var(--muted); font-size:0.85rem;"></p>
+    </div>
+
     <div class="panel" id="live-scores" style="display:none;">
-      <h3>คะแนนสด</h3>
-      <ol id="live-score-list"></ol>
+      <h3 id="scores-heading">คะแนนสด</h3>
+      <ul id="live-score-list" style="list-style:none; padding:0; margin:0;"></ul>
     </div>
   </div>
 
@@ -72,11 +81,13 @@
       collection,
       doc,
       setDoc,
+      updateDoc,
       getDocs,
       onSnapshot,
       serverTimestamp,
     } from "../assets/js/firebase-init.js";
     import { requireAuth } from "../assets/js/auth-guard.js";
+    import { timestampToMillis, sortResultsByScore } from "../assets/js/session-sync.js";
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
@@ -95,11 +106,23 @@
     const setupPanel = document.getElementById("setup-panel");
     const qrPanel = document.getElementById("qr-panel");
     const liveScoresPanel = document.getElementById("live-scores");
+    const scoresHeading = document.getElementById("scores-heading");
     const roomCodeOut = document.getElementById("room-code-out");
     const joinUrlOut = document.getElementById("join-url-out");
     const liveScoreList = document.getElementById("live-score-list");
+    const lobbyPanel = document.getElementById("lobby-panel");
+    const lobbyCountEl = document.getElementById("lobby-count");
+    const lobbyPlayerListEl = document.getElementById("lobby-player-list");
+    const startGameBtn = document.getElementById("start-game-btn");
+    const lobbyStatusEl = document.getElementById("lobby-status");
 
     let bankQuestions = [];
+    // สถานะสำหรับ "เริ่มเกมพร้อมกัน" + จับเวลาเพื่อสลับเป็นโหมดโพเดียมอัตโนมัติตอนหมดเวลา
+    let durationMinutesGlobal = 5;
+    let gameEndsAtMs = null; // คำนวณจาก startedAt (serverTimestamp ที่ commit จริง) ไม่ใช่นาฬิกาเครื่องครูเอง
+    let gameEndedFlag = false;
+    let podiumInterval = null;
+    let latestResults = [];
 
     async function loadBank() {
       const snap = await getDocs(collection(db, "questionBank"));
@@ -143,20 +166,61 @@
       return code;
     }
 
+    // ดึงมาแสดงใหม่ทั้งจาก onSnapshot ของ results (คะแนนเปลี่ยน) และจาก podium watcher (เวลาหมด
+    // เปลี่ยนเป็นโหมดโพเดียม) — แยกฟังก์ชัน render ออกมาต่างหากเพื่อไม่ให้ต้อง query ซ้ำสองที่
+    function renderScores() {
+      const sorted = sortResultsByScore(latestResults);
+      if (sorted.length === 0) {
+        liveScoreList.innerHTML = '<li style="color:var(--muted)">ยังไม่มีใครตอบ...</li>';
+        return;
+      }
+      const medals = ["🥇", "🥈", "🥉"];
+      liveScoreList.innerHTML = sorted
+        .map((r, i) => {
+          const label = gameEndedFlag && i < 3 ? medals[i] : `${i + 1}.`;
+          const total = (r.score ?? 0) + (r.bonusScore ?? 0);
+          return `<li>${label} ${r.name ?? "?"} — ${total} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`;
+        })
+        .join("");
+    }
+
     function watchLiveScores(roomCode) {
       liveScoresPanel.style.display = "block";
       onSnapshot(collection(db, "sessions", roomCode, "results"), (snap) => {
-        const results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        results.sort((a, b) => (b.score ?? 0) + (b.bonusScore ?? 0) - ((a.score ?? 0) + (a.bonusScore ?? 0)));
-        liveScoreList.innerHTML =
-          results.length === 0
-            ? '<li style="color:var(--muted)">ยังไม่มีใครตอบ...</li>'
-            : results
-                .map(
-                  (r) =>
-                    `<li>${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`
-                )
-                .join("");
+        latestResults = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderScores();
+      });
+    }
+
+    // ล็อบบี้: โชว์รายชื่อผู้เล่นที่เข้าห้องแล้วแบบสด ระหว่างรอครูกดเริ่ม
+    function watchLobbyPlayers(roomCode) {
+      lobbyPanel.style.display = "block";
+      onSnapshot(collection(db, "sessions", roomCode, "players"), (snap) => {
+        const players = snap.docs.map((d) => d.data());
+        lobbyCountEl.textContent = players.length;
+        lobbyPlayerListEl.innerHTML =
+          players.length === 0
+            ? '<li style="color:var(--muted)">ยังไม่มีใครเข้าห้อง</li>'
+            : players.map((p) => `<li>🙋 ${p.name ?? "?"}</li>`).join("");
+      });
+    }
+
+    // ฟังสถานะห้อง (sessions doc) — ใช้ startedAt ที่ commit จริงจากเซิร์ฟเวอร์มาคำนวณเวลาจบเกม
+    // (ไม่ใช้นาฬิกาเครื่องครูเองตรงๆ) ให้ตรงกับค่าที่ทุกเครื่องนักเรียนคำนวณเหมือนกันทุกตัว แล้วตั้ง
+    // นาฬิกานับถอยหลังในเครื่องครูเองไว้สลับเป็นโหมดโพเดียมอัตโนมัติตอนหมดเวลา ไม่ต้องให้ครูกดจบเอง
+    function watchSessionDoc(roomCode) {
+      onSnapshot(doc(db, "sessions", roomCode), (snap) => {
+        const data = snap.data();
+        if (!data || data.status !== "active" || !data.startedAt || gameEndsAtMs !== null) return;
+        const startedAtMs = timestampToMillis(data.startedAt);
+        gameEndsAtMs = startedAtMs + durationMinutesGlobal * 60 * 1000;
+        podiumInterval = setInterval(() => {
+          if (gameEndedFlag || Date.now() < gameEndsAtMs) return;
+          gameEndedFlag = true;
+          scoresHeading.textContent = "🏆 ผลการแข่งขัน (จบเกมแล้ว)";
+          renderScores();
+          clearInterval(podiumInterval);
+        }, 1000);
       });
     }
 
@@ -189,6 +253,7 @@
 
       try {
         const roomCode = generateRoomCode();
+        durationMinutesGlobal = durationMinutes;
         await setDoc(doc(db, "sessions", roomCode), {
           quizTitle,
           durationMinutes,
@@ -207,7 +272,26 @@
         joinUrlOut.textContent = joinUrl;
         new QRCode(document.getElementById("qr-code"), { text: joinUrl, width: 200, height: 200 });
 
-        watchLiveScores(roomCode);
+        // ล็อบบี้ก่อน — รอให้ผู้เล่นเข้าห้องแล้วครูค่อยกด "เริ่มเกมพร้อมกัน" เอง (เดิมแต่ละคน
+        // กดเริ่มเองทันทีที่พร้อม นาฬิกาต่างคนต่างเดิน ไม่ซิงค์กันเลยทั้งห้อง)
+        watchLobbyPlayers(roomCode);
+        watchSessionDoc(roomCode);
+
+        startGameBtn.addEventListener("click", async () => {
+          startGameBtn.disabled = true;
+          lobbyStatusEl.textContent = "กำลังเริ่มเกม...";
+          try {
+            await updateDoc(doc(db, "sessions", roomCode), {
+              status: "active",
+              startedAt: serverTimestamp(),
+            });
+            lobbyStatusEl.textContent = "✅ เริ่มเกมแล้ว! นักเรียนทุกคนเริ่มพร้อมกัน";
+            watchLiveScores(roomCode);
+          } catch (err) {
+            lobbyStatusEl.textContent = `❌ เริ่มเกมไม่สำเร็จ: ${err.message}`;
+            startGameBtn.disabled = false;
+          }
+        });
       } catch (err) {
         publishStatus.textContent = `❌ สร้างห้องไม่สำเร็จ: ${err.message}`;
         publishBtn.disabled = false;

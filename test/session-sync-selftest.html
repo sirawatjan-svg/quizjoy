@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Session Sync Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Session Sync Self-Test</h1>
+  <p>ทดสอบตรรกะ "เริ่มเกมพร้อมกันทั้งห้อง" + จัดอันดับ/โพเดียม ที่ใช้ร่วมกันทั้ง teacher/host.html
+     และ student/app.js (assets/js/session-sync.js) — ไม่แตะ Firestore/DOM จริงเลย เทสแค่ตรรกะล้วนๆ</p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import {
+      timestampToMillis,
+      computeGameEndsAt,
+      sortResultsByScore,
+      findRank,
+    } from "../assets/js/session-sync.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}: ได้ ${JSON.stringify(actual)} (คาดหวัง ${JSON.stringify(expected)})`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    // --- timestampToMillis ---
+    check("Firestore Timestamp จริง (.toMillis())", timestampToMillis({ toMillis: () => 1788275728576 }), 1788275728576);
+    check("plain object {seconds} จาก REST API", timestampToMillis({ seconds: 1788275728, nanoseconds: 0 }), 1788275728000);
+    check("null/undefined -> null", timestampToMillis(null), null);
+    check("object แปลกๆ ไม่รู้จัก -> null", timestampToMillis({}), null);
+
+    // --- computeGameEndsAt ---
+    const started = { seconds: 1788275728 }; // = 1788275728000 ms
+    check(
+      "startedAt + 5 นาที = +300000ms",
+      computeGameEndsAt(started, 5),
+      1788275728000 + 5 * 60 * 1000
+    );
+    check("startedAt ยังไม่มี (ห้องยังไม่เริ่ม) -> null", computeGameEndsAt(null, 5), null);
+    check("durationMinutes = 0 ก็ยังคำนวณได้ (จบทันที ไม่ error)", computeGameEndsAt(started, 0), 1788275728000);
+
+    // --- sortResultsByScore ---
+    const raw = [
+      { id: "a", name: "เอ", score: 500, bonusScore: 100 }, // รวม 600
+      { id: "b", name: "บี", score: 800, bonusScore: 0 },   // รวม 800
+      { id: "c", name: "ซี", score: 0, bonusScore: 0 },      // รวม 0
+      { id: "d", name: "ดี", score: 300 },                    // ไม่มี bonusScore เลย ต้องนับเป็น 0 ไม่ error
+    ];
+    const sorted = sortResultsByScore(raw);
+    check("เรียงมาก->น้อยถูกต้อง (รวมคะแนน+โบนัส)", sorted.map((r) => r.id), ["b", "a", "d", "c"]);
+    check("sortResultsByScore ไม่แก้ไข array ต้นฉบับ (immutable)", raw.map((r) => r.id), ["a", "b", "c", "d"]);
+
+    // --- findRank ---
+    check("หา rank ของ 'a' (อยู่อันดับ 2)", findRank(sorted, "a"), 2);
+    check("หา rank ของ 'b' (อยู่อันดับ 1 - ที่1)", findRank(sorted, "b"), 1);
+    check("หา rank ของคนที่ไม่มีผลคะแนนเลย -> null", findRank(sorted, "ไม่มีตัวตน"), null);
+
+    // จำลองสถานการณ์จริง: ฝั่งครู (host.html) กับฝั่งนักเรียน (app.js) ต้องได้ผลจัดอันดับตรงกันเป๊ะ
+    // เมื่อป้อนข้อมูล results ชุดเดียวกัน (เหตุผลที่แยกฟังก์ชันมาใช้ร่วมกันแทนเขียนสูตรคนละที่)
+    const teacherSideSorted = sortResultsByScore(raw);
+    const studentSideSorted = sortResultsByScore(raw);
+    check(
+      "ครูกับนักเรียนจัดอันดับข้อมูลชุดเดียวกันได้ผลตรงกันเป๊ะ",
+      teacherSideSorted.map((r) => r.id),
+      studentSideSorted.map((r) => r.id)
+    );
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

@@ -300,6 +300,50 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .bonus-banner h2 { margin: 0; font-size: 1.6rem; }
 .bonus-banner p { color: var(--muted); margin: 0; }
 
+/* ล็อบบี้รอครูเริ่มเกม — เต็มจอทับ camera feed เหมือน bonus-banner (z-index เดียวกัน คนละจังหวะกัน
+   ไม่มีวันโชว์พร้อมกัน) โชว์รายชื่อเพื่อนที่เข้าห้องแล้วแบบสดระหว่างรอ */
+.lobby-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.92);
+  text-align: center;
+}
+.lobby-overlay h2 { margin: 0; font-size: 1.5rem; }
+.lobby-players {
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px;
+  width: 100%;
+  max-width: 360px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.lobby-players-title {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+#lobby-player-list, #podium-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+}
+#lobby-player-list li, #podium-list li {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
 /* ตัวอย่างท่าทางเคลื่อนไหว โชว์ตอนนับถอยหลังก่อนเริ่มมินิเกม แทนคำอธิบายเฉยๆ
    ให้เด็กเห็นภาพว่าต้องทำท่าไหนจริงๆ ก่อนเริ่มเล่น */
 .bonus-demo { margin-top: 12px; }

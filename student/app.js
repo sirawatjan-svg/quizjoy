@@ -1,6 +1,17 @@
 import { startGestureDetection, resetHoldTimer, setCalibration } from "../assets/js/gesture-detection.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
-import { db, doc, getDoc, setDoc, serverTimestamp, arrayUnion } from "../assets/js/firebase-init.js";
+import { computeGameEndsAt, sortResultsByScore, findRank } from "../assets/js/session-sync.js";
+import {
+  db,
+  doc,
+  collection,
+  getDoc,
+  getDocs,
+  setDoc,
+  onSnapshot,
+  serverTimestamp,
+  arrayUnion,
+} from "../assets/js/firebase-init.js";
 
 const params = new URLSearchParams(location.search);
 const room = params.get("room") || sessionStorage.getItem("quizjoy_room");
@@ -37,6 +48,12 @@ const bonusTitle = document.getElementById("bonus-title");
 const bonusSub = document.getElementById("bonus-sub");
 const perfBadge = document.getElementById("perf-badge");
 const calibSkipBtn = document.getElementById("calib-skip-btn");
+const lobbyOverlay = document.getElementById("lobby-overlay");
+const lobbyCountEl = document.getElementById("lobby-count");
+const lobbyPlayerListEl = document.getElementById("lobby-player-list");
+const rankSummaryEl = document.getElementById("rank-summary");
+const podiumPanelEl = document.getElementById("podium-panel");
+const podiumListEl = document.getElementById("podium-list");
 
 const corners = {
   tl: document.getElementById("answer-tl"),
@@ -58,6 +75,14 @@ let answered = false;
 let gameEndsAt = null;
 let timerInterval = null;
 let answerHistory = []; // { questionId, selectedZone, isCorrect, answeredAt } ทุกครั้งที่ตอบ ใช้ทำหน้าเฉลยย้อนหลัง
+
+// --- ล็อบบี้ + เริ่มเกมพร้อมกันทั้งห้อง ---
+// เดิม: แต่ละคนกด "เริ่มเล่น" แล้วนาฬิกาถอยหลังของตัวเองก็เริ่มทันที ต่างคนต่างเวลากันหมด ไม่มีจุดไหน
+// ในระบบซิงค์เวลาข้ามเครื่องเลย ตอนนี้ทุกคนต้องรอครูกด "เริ่มเกมพร้อมกัน" ที่ host.html ก่อน (เขียน
+// sessions/{room}.status="active" + startedAt=serverTimestamp() ครั้งเดียว) แล้วทุกเครื่องคำนวณ
+// gameEndsAt จากค่า startedAt เดียวกันนั้น (ไม่ใช่ Date.now() ของตัวเอง) การันตีว่าจบเกมพร้อมกันจริง
+let sessionStartUnsub = null;
+let lobbyPlayersUnsub = null;
 
 // --- Kahoot-style: โชว์คำถามอย่างเดียวก่อน แล้วค่อยเปิดตัวเลือกทีหลัง (จังหวะที่ 2) ---
 // จังหวะที่ 0 (ใหม่ ตามฟีดแบ็กครู): คำถามโผล่กลางจอใหญ่ๆ ให้อ่านชัดๆ ก่อน แล้วค่อย "บิน" ย่อขึ้นไป
@@ -135,20 +160,63 @@ function finishCalibration() {
     setCalibration(safeCx, safeCy);
   }
   Object.values(corners).forEach((el) => el.classList.remove("target", "calib-dim"));
-  beginQuiz();
+  enterLobby();
 }
 
 function skipCalibration() {
   calibSkipBtn.style.display = "none";
   Object.values(corners).forEach((el) => el.classList.remove("target", "calib-dim"));
-  beginQuiz();
+  enterLobby();
 }
 
 calibSkipBtn.addEventListener("click", skipCalibration);
 
-function beginQuiz() {
+// เข้าล็อบบี้ (หลังปรับเทียบ/ข้ามปรับเทียบเสร็จ หรือไม่มีกล้องเลยก็ต้องผ่านจุดนี้เหมือนกัน) — รอครูกด
+// "เริ่มเกมพร้อมกัน" ที่ host.html ก่อนถึงจะเริ่มนับเวลาจริง เห็นรายชื่อเพื่อนที่เข้าห้องแล้วระหว่างรอ
+function enterLobby() {
+  mode = "lobby";
+  timerBadge.textContent = "รอเริ่ม";
+  lobbyOverlay.style.display = "flex";
+
+  lobbyPlayersUnsub = onSnapshot(collection(db, "sessions", room, "players"), (snap) => {
+    const players = snap.docs.map((d) => d.data());
+    lobbyCountEl.textContent = players.length;
+    lobbyPlayerListEl.innerHTML =
+      players.length === 0
+        ? '<li style="color:var(--muted)">ยังไม่มีใครเข้าห้อง</li>'
+        : players.map((p) => `<li>🙋 ${p.name ?? "?"}</li>`).join("");
+  });
+
+  sessionStartUnsub = onSnapshot(doc(db, "sessions", room), (snap) => {
+    const data = snap.data();
+    if (!data || data.status !== "active" || !data.startedAt) return;
+
+    sessionStartUnsub?.();
+    sessionStartUnsub = null;
+    lobbyPlayersUnsub?.();
+    lobbyPlayersUnsub = null;
+    lobbyOverlay.style.display = "none";
+
+    // ใช้ startedAt ที่ commit จริงจากเซิร์ฟเวอร์ (ไม่ใช่ Date.now() ของเครื่องตัวเอง) คำนวณเวลาจบเกม
+    // ให้ตรงกับค่าที่ทุกเครื่องในห้องคำนวณออกมาเหมือนกันทุกตัว ต่อให้นาฬิกาเครื่องใครไม่ตรงกันก็ตาม
+    const endsAt = computeGameEndsAt(data.startedAt, sessionData.durationMinutes);
+
+    if (endsAt === null || Date.now() >= endsAt) {
+      // เข้าห้องช้าเกินไป (เช่น เพิ่งปรับเทียบเสร็จตอนหมดเวลาไปแล้ว) — ไม่มีเวลาให้เล่นแล้ว จบเกมทันที
+      quizStage.style.display = "none";
+      endScreen.style.display = "flex";
+      finalScoreEl.textContent = "0";
+      finalSummaryEl.textContent = "เกมจบไปแล้วก่อนที่คุณจะเริ่มทัน — รอรอบหน้าจากครูนะ";
+      return;
+    }
+
+    beginQuiz(endsAt);
+  });
+}
+
+function beginQuiz(sharedEndsAt) {
   mode = "quiz";
-  gameEndsAt = Date.now() + sessionData.durationMinutes * 60 * 1000;
+  gameEndsAt = sharedEndsAt;
   loadQuestion();
   tickTimer();
   timerInterval = setInterval(tickTimer, 250);
@@ -488,6 +556,11 @@ function onZoneUpdate(frame) {
     return;
   }
 
+  if (mode === "lobby") {
+    // แค่รอครูกดเริ่ม ยังไม่มีคำถามให้ตอบ — จุดติดตามมือด้านบนอัปเดตให้เห็นตามปกติ แต่ไม่ประมวลผลอะไรต่อ
+    return;
+  }
+
   if (mode === "bonus") {
     bonusZoneHandler?.({ zone, point });
     return;
@@ -573,6 +646,35 @@ function endGame() {
   finalScoreEl.textContent = score + bonusScore;
   finalSummaryEl.textContent = `ตอบไป ${answeredCount} ข้อ (คะแนนคำถาม ${score} + คะแนนโบนัส ${bonusScore})`;
   saveProgress({ status: "finished", finishedAt: serverTimestamp() });
+  showRankAndPodium();
+}
+
+// อันดับตัวเอง + ประกาศ 3 อันดับแรกของห้องทั้งหมด (ไม่ใช่แค่ของตัวเอง) — ทุกคนคำนวณ gameEndsAt จาก
+// startedAt ค่าเดียวกัน เกมของทุกคนเลยจบพร้อมๆ กันจริง (คลาดเคลื่อนกันแค่เศษเสี้ยววินาทีจาก network/เฟรม)
+// พอถึงตอนนี้ผลคะแนนของเกือบทุกคนก็เขียนลง Firestore ครบแล้ว จึงดึงมาสรุปอันดับได้เลยโดยไม่ต้องรอสัญญาณ
+// "ห้องจบแล้ว" จากครูเพิ่ม
+async function showRankAndPodium() {
+  try {
+    const snap = await getDocs(collection(db, "sessions", room, "results"));
+    const all = sortResultsByScore(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+    const myRank = findRank(all, studentId);
+    if (myRank !== null) {
+      rankSummaryEl.textContent = `🏅 อันดับที่ ${myRank} จาก ${all.length} คน`;
+    }
+
+    const top3 = all.slice(0, 3);
+    if (top3.length > 0) {
+      const medals = ["🥇", "🥈", "🥉"];
+      podiumListEl.innerHTML = top3
+        .map((r, i) => `<li>${medals[i]} ${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน</li>`)
+        .join("");
+      podiumPanelEl.style.display = "block";
+    }
+  } catch (err) {
+    console.error("[quizjoy] โหลดอันดับ/โพเดียมไม่สำเร็จ:", err);
+    // ไม่ block การแสดงคะแนนของตัวเอง — แค่ไม่โชว์ส่วนอันดับ/โพเดียมถ้าโหลดพลาด
+  }
 }
 
 // --- Tap-to-answer fallback (กันกรณีกล้อง/แสงมีปัญหา) — mode guard กันชนกับ listener ของ bonus game ---
@@ -597,11 +699,12 @@ startBtn.addEventListener("click", async () => {
         showBonusToast("โหมดชี้มือใช้ไม่ได้ตอนนี้ — แตะจอตอบแทนได้เลย");
       },
     });
-    // มีกล้อง -> ให้ calibrate ก่อนเริ่มจับเวลาจริง (ไม่งั้นเวลาเล่นจะเสียไปกับขั้นตอนปรับเทียบ)
+    // มีกล้อง -> ให้ calibrate ก่อน (ไม่งั้นเวลาเล่นจะเสียไปกับขั้นตอนปรับเทียบ) แล้วค่อยเข้าล็อบบี้รอครู
     startCalibration();
   } else {
-    // ไม่มีกล้อง (ขอสิทธิ์ไม่สำเร็จ) — ไม่มี gesture ให้ calibrate อยู่แล้ว ข้ามไปเล่นด้วยการแตะจอเลย
-    beginQuiz();
+    // ไม่มีกล้อง (ขอสิทธิ์ไม่สำเร็จ) — ไม่มี gesture ให้ calibrate แต่ก็ยังต้องรอครูกดเริ่มเหมือนกัน
+    // (ตอบด้วยการแตะจอแทนได้ แต่ต้องเริ่มนาฬิกาพร้อมทั้งห้องเหมือนกันทุกคน)
+    enterLobby();
   }
 });
 
