@@ -14,6 +14,17 @@
     .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; margin-right:6px; }
     .opt-line { color: var(--muted); font-size: 0.85rem; margin: 2px 0; }
     .opt-line.correct { color: var(--correct); font-weight: 600; }
+
+    /* --- เลย์เอาต์เดสก์ท็อป --- เดิมหน้านี้จำกัดความกว้างไว้แค่ 720px แบบ mobile-first แม้เปิดจาก
+       โน้ตบุ๊กก็ตาม (ครูส่วนใหญ่เปิดหน้าจัดการคลังข้อสอบจากคอมเป็นหลัก) เลยขยายเฉพาะจอกว้าง: ฟอร์ม
+       เพิ่มคำถามอยู่ซ้าย (แคบ ไม่ต้องยืด) รายการคำถามในคลังอยู่ขวา (กว้าง ไหล 2 คอลัมน์) แทนที่จะ
+       เรียงฟอร์ม+รายการต่อกันยาวๆ ลงมาคอลัมน์เดียวเหมือนเดิม */
+    @media (min-width: 900px) {
+      .bank-layout { max-width: 1100px; }
+      .bank-content { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+      #q-list { column-count: 2; column-gap: 16px; }
+      .q-list-item { break-inside: avoid-column; }
+    }
   </style>
 </head>
 <body>
@@ -21,31 +32,35 @@
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
     <h1>📚 คลังข้อสอบ</h1>
 
-    <div class="panel q-form">
-      <h3>เพิ่มคำถามใหม่</h3>
-      <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
-      <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
-      <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
-      <input id="q-opt-tr" placeholder="ตัวเลือก B (มุมขวาบน)" />
-      <input id="q-opt-bl" placeholder="ตัวเลือก C (มุมซ้ายล่าง)" />
-      <input id="q-opt-br" placeholder="ตัวเลือก D (มุมขวาล่าง)" />
-      <select id="q-correct" style="width:100%; margin-bottom:8px;">
-        <option value="tl">เฉลย: A</option>
-        <option value="tr">เฉลย: B</option>
-        <option value="bl">เฉลย: C</option>
-        <option value="br">เฉลย: D</option>
-      </select>
-      <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
-      <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
-      <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
-    </div>
+    <div class="bank-content">
+      <div class="panel q-form">
+        <h3>เพิ่มคำถามใหม่</h3>
+        <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
+        <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
+        <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
+        <input id="q-opt-tr" placeholder="ตัวเลือก B (มุมขวาบน)" />
+        <input id="q-opt-bl" placeholder="ตัวเลือก C (มุมซ้ายล่าง)" />
+        <input id="q-opt-br" placeholder="ตัวเลือก D (มุมขวาล่าง)" />
+        <select id="q-correct" style="width:100%; margin-bottom:8px;">
+          <option value="tl">เฉลย: A</option>
+          <option value="tr">เฉลย: B</option>
+          <option value="bl">เฉลย: C</option>
+          <option value="br">เฉลย: D</option>
+        </select>
+        <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
+        <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
+        <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
+      </div>
 
-    <h3>คำถามในคลัง</h3>
-    <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
-    <div id="q-list">
-      <p style="color:var(--muted)">
-        ⚠️ ยังไม่ได้เชื่อมต่อ Firestore — จะแสดงรายการคำถามที่นี่หลังใส่ Firebase config แล้ว
-      </p>
+      <div>
+        <h3>คำถามในคลัง</h3>
+        <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
+        <div id="q-list">
+          <p style="color:var(--muted)">
+            ⚠️ ยังไม่ได้เชื่อมต่อ Firestore — จะแสดงรายการคำถามที่นี่หลังใส่ Firebase config แล้ว
+          </p>
+        </div>
+      </div>
     </div>
   </div>
 

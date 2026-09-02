@@ -8,12 +8,30 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     .host-layout { max-width: 640px; margin: 0 auto; padding: 24px; text-align: left; }
-    .q-pick-item { display:flex; align-items:flex-start; gap:10px; background: var(--panel); border-radius: 10px; padding: 10px; margin-bottom: 6px; }
+    .q-pick-item { display:flex; align-items:flex-start; gap:10px; background: var(--panel); border-radius: 10px; padding: 10px; margin-bottom: 6px; break-inside: avoid-column; }
     .q-pick-item input { margin-top: 4px; }
     .q-pick-item .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; margin-right:6px; }
     #qr-code { display:flex; justify-content:center; padding: 12px; background: white; border-radius: 12px; width: fit-content; margin: 12px auto; }
     #live-score-list li { padding: 4px 0; }
     .room-code-big { font-size: 2rem; font-weight: 800; letter-spacing: 4px; text-align:center; }
+
+    /* --- เลย์เอาต์เดสก์ท็อป (โน้ตบุ๊ก/คอม) --- เดิมหน้านี้ทั้งหน้าจำกัดความกว้างไว้แค่ 640px แบบ
+       mobile-first แม้เปิดจากคอมกว้างๆ ก็ตาม ทำให้เสียพื้นที่จอไปเปล่าๆ — ครูส่วนใหญ่เปิดหน้านี้จาก
+       โน้ตบุ๊กเป็นหลัก (ต่างจากฝั่งนักเรียนที่ตั้งใจให้เป็นมือถือ) เลยขยายเฉพาะหน้านี้ให้ใช้จอกว้างจริง */
+    @media (min-width: 900px) {
+      .host-layout { max-width: 1100px; }
+
+      /* ฟอร์มชื่อ/เวลาเล่น ไม่ต้องยืดเต็ม 1100px จนช่องกรอกดูแปลกๆ จำกัดความกว้างไว้พอดี */
+      .field-group { max-width: 480px; }
+
+      /* รายการคำถามให้ใช้พื้นที่กว้างที่เหลือ ไหลเป็น 2 คอลัมน์แทนที่จะเป็นลิสต์ยาวๆ คอลัมน์เดียว */
+      #q-pick-list { column-count: 2; column-gap: 16px; }
+
+      /* หลังสร้างห้องแล้ว: QR/รหัสห้อง (แคบ ไม่ต้องยืด) อยู่ซ้าย, ล็อบบี้+คะแนนสด อยู่ขวา
+         แทนที่จะเรียงต่อกันลงมายาวๆ ทั้งที่มีพื้นที่ข้างๆ ว่างอยู่ */
+      .post-create-layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+      .post-create-right { display: flex; flex-direction: column; gap: 20px; }
+    }
   </style>
 </head>
 <body>
@@ -29,14 +47,18 @@
     </div>
 
     <div class="panel" id="setup-panel">
-      <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
-      <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
+      <!-- ฟอร์มชื่อ/เวลา จำกัดความกว้างไว้บนจอกว้าง (ดู .field-group ใน CSS) ไม่งั้นช่องกรอกจะยืด
+           เต็ม 1100px จนดูแปลกๆ ส่วนรายการคำถามด้านล่างปล่อยให้ใช้เต็มความกว้างได้เลย -->
+      <div class="field-group">
+        <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
+        <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
 
-      <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
-      <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
-      <p style="color:var(--muted); font-size:0.8rem;">
-        เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
-      </p>
+        <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
+        <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
+        <p style="color:var(--muted); font-size:0.8rem;">
+          เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
+        </p>
+      </div>
 
       <label style="display:block; margin: 16px 0 4px;">เลือกคำถามจากคลัง</label>
       <div style="margin-bottom:8px;">
@@ -47,31 +69,40 @@
         <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
       </div>
 
-      <button id="publish-btn" style="width:100%; margin-top:16px;">🚀 สร้างห้องและเริ่มเกม</button>
-      <p id="publish-status" style="color:var(--muted); font-size:0.85rem;"></p>
+      <div class="field-group">
+        <button id="publish-btn" style="width:100%; margin-top:16px;">🚀 สร้างห้องและเริ่มเกม</button>
+        <p id="publish-status" style="color:var(--muted); font-size:0.85rem;"></p>
+      </div>
     </div>
 
-    <div class="panel" id="qr-panel" style="display:none;">
-      <h3 style="text-align:center;">ห้องพร้อมแล้ว!</h3>
-      <div class="room-code-big" id="room-code-out"></div>
-      <div id="qr-code"></div>
-      <p style="color:var(--muted); font-size:0.85rem; text-align:center;">
-        ให้นักเรียนสแกน QR หรือเข้า <span id="join-url-out"></span> แล้วกรอกรหัสห้องด้านบน
-      </p>
-    </div>
+    <!-- หลังสร้างห้องแล้ว: QR/รหัสห้อง อยู่คอลัมน์ซ้าย (แคบกว่า ไม่ต้องยืดเต็ม), ล็อบบี้+คะแนนสด
+         อยู่คอลัมน์ขวา — จัดเป็น 2 คอลัมน์เฉพาะจอกว้าง (ดู .post-create-layout ใน CSS) จอมือถือ
+         ยังเรียงต่อกันแนวตั้งเหมือนเดิมทุกอย่าง ไม่กระทบ -->
+    <div class="post-create-layout">
+      <div class="panel" id="qr-panel" style="display:none;">
+        <h3 style="text-align:center;">ห้องพร้อมแล้ว!</h3>
+        <div class="room-code-big" id="room-code-out"></div>
+        <div id="qr-code"></div>
+        <p style="color:var(--muted); font-size:0.85rem; text-align:center;">
+          ให้นักเรียนสแกน QR หรือเข้า <span id="join-url-out"></span> แล้วกรอกรหัสห้องด้านบน
+        </p>
+      </div>
 
-    <!-- ล็อบบี้: รอผู้เล่นเข้าห้อง แล้วครูกดเริ่มเองให้ทุกคนเริ่มพร้อมกัน (เดิมแต่ละคนกดเริ่มเอง
-         นาฬิกาต่างคนต่างเดิน ไม่ซิงค์กันเลย) -->
-    <div class="panel" id="lobby-panel" style="display:none;">
-      <h3>👥 ผู้เล่นที่เข้าห้องแล้ว (<span id="lobby-count">0</span>)</h3>
-      <ul id="lobby-player-list" style="list-style:none; padding:0; margin:0 0 12px;"></ul>
-      <button id="start-game-btn" style="width:100%;">🚀 เริ่มเกมพร้อมกัน</button>
-      <p id="lobby-status" style="color:var(--muted); font-size:0.85rem;"></p>
-    </div>
+      <div class="post-create-right">
+        <!-- ล็อบบี้: รอผู้เล่นเข้าห้อง แล้วครูกดเริ่มเองให้ทุกคนเริ่มพร้อมกัน (เดิมแต่ละคนกดเริ่มเอง
+             นาฬิกาต่างคนต่างเดิน ไม่ซิงค์กันเลย) -->
+        <div class="panel" id="lobby-panel" style="display:none;">
+          <h3>👥 ผู้เล่นที่เข้าห้องแล้ว (<span id="lobby-count">0</span>)</h3>
+          <ul id="lobby-player-list" style="list-style:none; padding:0; margin:0 0 12px;"></ul>
+          <button id="start-game-btn" style="width:100%;">🚀 เริ่มเกมพร้อมกัน</button>
+          <p id="lobby-status" style="color:var(--muted); font-size:0.85rem;"></p>
+        </div>
 
-    <div class="panel" id="live-scores" style="display:none;">
-      <h3 id="scores-heading">คะแนนสด</h3>
-      <ul id="live-score-list" style="list-style:none; padding:0; margin:0;"></ul>
+        <div class="panel" id="live-scores" style="display:none;">
+          <h3 id="scores-heading">คะแนนสด</h3>
+          <ul id="live-score-list" style="list-style:none; padding:0; margin:0;"></ul>
+        </div>
+      </div>
     </div>
   </div>
 

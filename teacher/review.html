@@ -16,6 +16,14 @@
     .qstat-row .bar-fill { height: 100%; background: var(--correct); }
     .qstat-row.low .bar-fill { background: var(--wrong); }
     .empty-note { color: var(--muted); }
+
+    /* --- เลย์เอาต์เดสก์ท็อป --- ครูส่วนใหญ่เปิดหน้าดูผลย้อนหลังจากโน้ตบุ๊ก จัด "คะแนนรายบุคคล"
+       กับ "สรุปรายข้อ" เป็น 2 คอลัมน์เคียงกันบนจอกว้าง แทนที่จะเรียงต่อกันยาวๆ ลงมาคอลัมน์เดียว —
+       ดูทั้งสองอย่างพร้อมกันได้โดยไม่ต้องเลื่อนสลับไปมา */
+    @media (min-width: 900px) {
+      .review-layout { max-width: 1100px; }
+      .review-content { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    }
   </style>
 </head>
 <body>
@@ -30,14 +38,20 @@
       </select>
     </div>
 
-    <h3>คะแนนรายบุคคล <span style="font-weight:400; font-size:0.8rem; color:var(--muted);">(คลิกชื่อเพื่อดูรายข้อ)</span></h3>
-    <div id="student-results">
-      <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
-    </div>
+    <div class="review-content">
+      <div>
+        <h3>คะแนนรายบุคคล <span style="font-weight:400; font-size:0.8rem; color:var(--muted);">(คลิกชื่อเพื่อดูรายข้อ)</span></h3>
+        <div id="student-results">
+          <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
+        </div>
+      </div>
 
-    <h3>สรุปรายข้อ (ข้อไหนพลาดเยอะ)</h3>
-    <div id="per-question-stats">
-      <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
+      <div>
+        <h3>สรุปรายข้อ (ข้อไหนพลาดเยอะ)</h3>
+        <div id="per-question-stats">
+          <p class="empty-note">เลือกรอบเล่นด้านบนก่อน</p>
+        </div>
+      </div>
     </div>
   </div>
 
