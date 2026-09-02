@@ -239,10 +239,13 @@ export function runHandBounce(ctx) {
     return null;
   }
 
-  function highlightSide(activeSide) {
+  // ไฮไลต์ฝั่งที่ควรไป "ต่อไป" (ไม่ใช่ฝั่งที่อยู่ตอนนี้) — ชัดเจนกว่าสำหรับทั้งคนใช้มือจริงและคนแตะจอ
+  // (กล้องเสีย/เปิดไม่ติด): เห็นไฟกระพริบที่มุมไหนก็รู้เลยว่าต้องขยับ/แตะไปทางนั้นต่อถึงจะได้แต้ม
+  function highlightTarget(currentActiveSide) {
+    const targetSide = currentActiveSide === "up" ? "down" : "up";
     Object.entries(corners).forEach(([zone, el]) => {
       const zoneSide = upZones.includes(zone) ? "up" : "down";
-      el.classList.toggle("target", zoneSide === activeSide);
+      el.classList.toggle("target", zoneSide === targetSide);
     });
   }
 
@@ -253,7 +256,7 @@ export function runHandBounce(ctx) {
 
     if (currentSide === null) {
       currentSide = side;
-      highlightSide(side);
+      highlightTarget(side);
       return;
     }
 
@@ -262,7 +265,7 @@ export function runHandBounce(ctx) {
 
     lastSwitchTs = now;
     currentSide = side;
-    highlightSide(side);
+    highlightTarget(side);
     onScore(20); // คงที่ต่อการสลับฝั่งสำเร็จ 1 ครั้ง ไม่ผูกกับความเร็ว/จังหวะแล้ว — เร็วช้าตามตัวเด็กเอง
   }
 
