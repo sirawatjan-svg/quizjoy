@@ -13,7 +13,8 @@
 <body>
   <h1>🧪 Calibration Self-Test</h1>
   <p>ทดสอบว่า setCalibration() ขยับจุดศูนย์กลางของ pointToZone() ได้จริง และแก้ปัญหา
-     "ชี้บนแต่ถูกจับเป็นล่าง" ตามที่พบจากข้อมูลทดสอบจริง (backup-test-data/)</p>
+     "ชี้บนแต่ถูกจับเป็นล่าง" ตามที่พบจากข้อมูลทดสอบจริง (backup-test-data/) — รวมถึง createZoneTracker()
+     ตัวติดตามแยกอิสระต่อมือ (ใช้กับมินิเกม "67" แบบ 2 มือ)</p>
   <div id="log">กำลังทดสอบ...</div>
 
   <script type="module">
@@ -23,6 +24,7 @@
       setCalibration,
       getCalibration,
       resetCalibration,
+      createZoneTracker,
     } from "../assets/js/gesture-detection.js";
 
     const logEl = document.getElementById("log");
@@ -72,6 +74,27 @@
 
     resetZoneTracking();
     check("หลัง resetCalibration: จุด y=0.55 กลับไปเป็น bl เหมือนพฤติกรรมเดิม", pointToZone(0.3, 0.55), "bl");
+
+    // --- createZoneTracker(): ตัวติดตามแยกอิสระต่อมือ (ใช้กับมินิเกม "67" แบบ 2 มือ) ---
+    // ต้องมี hysteresis เหมือน pointToZone() เป๊ะ แต่ "ไม่ปนกัน" ระหว่าง instance คนละตัว และไม่ปนกับ
+    // lastZone ของ pointToZone() หลักด้วย (คนละ state กันคนละก้อน)
+    resetCalibration();
+    const trackerA = createZoneTracker();
+    const trackerB = createZoneTracker();
+
+    check("tracker A: จุดเริ่มต้นชัดเจนที่ tl", trackerA.classify(0.3, 0.3), "tl");
+    check("tracker A: ขยับผ่านเส้นกลาง x แค่ 0.01 ไม่ควรสลับ (hysteresis)", trackerA.classify(0.51, 0.3), "tl");
+
+    // tracker B เริ่มที่ br พร้อมๆ กับ tracker A ยังอยู่ tl — ต้องไม่ปนกันเป็นคนละสถานะ
+    check("tracker B: จุดเริ่มต้นที่ br (อิสระจาก tracker A)", trackerB.classify(0.7, 0.7), "br");
+    check("tracker A: หลังจาก B ขยับ ตัว A ต้องยังเป็น tl เหมือนเดิม (ไม่ถูก B รบกวน)", trackerA.classify(0.51, 0.3), "tl");
+
+    resetZoneTracking(); // pointToZone หลักต้องไม่ถูกกระทบจาก tracker แยกทั้งสองตัวเลย
+    check("pointToZone หลัก: อิสระจาก createZoneTracker เช่นกัน", pointToZone(0.7, 0.3), "tr");
+
+    trackerA.reset();
+    check("tracker A: หลัง reset() ชี้จุดใหม่ต้องได้ตาม quadrant ทันที", trackerA.classify(0.7, 0.7), "br");
+    check("tracker B: ไม่ถูกกระทบจากการ reset ของ A", trackerB.classify(0.55, 0.7), "br");
 
     lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
     logEl.innerHTML = lines.join("\n");

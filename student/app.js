@@ -30,6 +30,7 @@ const cameraFeed = document.getElementById("camera-feed");
 const startBtn = document.getElementById("start-btn");
 const setupStatus = document.getElementById("setup-status");
 const handCursor = document.getElementById("hand-cursor");
+const handCursor2 = document.getElementById("hand-cursor-2");
 const holdProgressBar = document.getElementById("hold-progress-bar");
 const questionText = document.getElementById("question-text");
 const questionLabel = document.getElementById("question-label");
@@ -524,17 +525,33 @@ function submitAnswer(zone) {
 }
 
 function onZoneUpdate(frame) {
-  const { zone, point, progress, confirmed } = frame;
+  const { zone, point, progress, confirmed, hands } = frame;
 
   // อัปเดตจุดติดตามมือทุกครั้งเสมอ ไม่ว่าจะอยู่โหมดคำถามหรือโหมดบอนัส — เดิมโค้ดนี้ return ก่อนถึงบรรทัดนี้
   // ตอนอยู่โหมดบอนัส ทำให้ไม่เห็นจุดติดตามเลยระหว่างเล่นมินิเกม (ทั้งที่มินิเกมคือเรื่องขยับมือล้วนๆ)
   // ดูเหมือนระบบ "ไม่ทำงานคู่ขนานกัน" ทั้งที่จริงๆ กล้องยังจับมืออยู่ตลอด แค่ไม่ได้โชว์ให้เห็น
-  if (point) {
+  //
+  // โชว์ 2 จุดถ้าเห็น 2 มือจริง (จาก frame.hands) ตามฟีดแบ็กครู — เดิมโชว์แค่จุดเดียวจากมือที่ "ถูกเลือก"
+  // ตัวเดียว (ตัวที่ยกสูงกว่า) ทำให้เห็นภาพว่าระบบไม่รู้จักอีกมือเลย ทั้งที่จริงๆ กล้องเห็นทั้งสองมือ
+  const handList = hands ?? [];
+  if (handList[0]?.point) {
+    handCursor.style.display = "block";
+    handCursor.style.left = `${handList[0].point.x * 100}%`;
+    handCursor.style.top = `${handList[0].point.y * 100}%`;
+  } else if (point) {
+    // สำรอง: เผื่อกรณีไม่มี frame.hands (เช่นโค้ดเทสเก่า) ใช้จุดมือเดียวแบบเดิม
     handCursor.style.display = "block";
     handCursor.style.left = `${point.x * 100}%`;
     handCursor.style.top = `${point.y * 100}%`;
   } else {
     handCursor.style.display = "none";
+  }
+  if (handList[1]?.point) {
+    handCursor2.style.display = "block";
+    handCursor2.style.left = `${handList[1].point.x * 100}%`;
+    handCursor2.style.top = `${handList[1].point.y * 100}%`;
+  } else {
+    handCursor2.style.display = "none";
   }
 
   if (mode === "calib") {

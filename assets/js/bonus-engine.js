@@ -203,6 +203,11 @@ export function runReachForSky(ctx) {
 // ใช้ zone เดิม (ผ่านการปรับเทียบจาก calibration แล้ว) tl/tr = โซนบน, bl/br = โซนล่าง — ตั้งใจไม่โหลด
 // โมเดล pose/skeleton เพิ่มเพื่อตรวจท่าทาง (เคยลองแล้วพบว่าทำให้ FPS ตกและมือจับแม่นน้อยลง โดยเฉพาะ
 // เครื่องกลาง-ล่าง คือปัญหาสายเดียวกับที่กำลังจะแก้ ถ้าเปิดโมเดลหนักเพิ่มอาจยิ่งซ้ำเติม Android)
+//
+// v3.1: ใช้ frame.hands (ทุกมือที่เห็น ไม่เกิน 2 ข้าง แต่ละมือมี zone แยกอิสระของตัวเอง) แทน frame.zone
+// (มือเดียวที่ถูก "เลือก" มาแล้ว) ตามฟีดแบ็กครู — ท่า "67" จริงๆ คือขยับสองมือสลับกันแบบตาชั่ง ถ้าดูแค่
+// มือเดียว (ตัวที่ยกสูงกว่าในแต่ละเฟรม) ระบบอาจ "สลับไปดูอีกข้าง" กลางคันเวลาสองมืออยู่สูงใกล้เคียงกัน
+// ทำให้เห็นข้อมูลกระตุกทั้งที่ท่าจริงถูกต้องอยู่แล้ว — ให้ทุกมือ "โหวต" การสลับฝั่งได้เท่ากันแทน
 export function runHandBounce(ctx) {
   const { corners, onScore, onEnd } = ctx;
   const DURATION_MS = 10000;
@@ -261,7 +266,15 @@ export function runHandBounce(ctx) {
     onScore(20); // คงที่ต่อการสลับฝั่งสำเร็จ 1 ครั้ง ไม่ผูกกับความเร็ว/จังหวะแล้ว — เร็วช้าตามตัวเด็กเอง
   }
 
-  ctx.setZoneHandler(({ zone }) => registerSide(zoneToSide(zone)));
+  ctx.setZoneHandler(({ zone, hands }) => {
+    if (hands && hands.length > 0) {
+      // มีข้อมูลแยกต่อมือ (2 ข้อมือ) — ให้ทุกมือ "โหวต" ได้ ไม่ใช่แค่มือที่ถูกเลือกมือเดียว
+      hands.forEach((h) => registerSide(zoneToSide(h.zone)));
+    } else {
+      // เผื่อ ctx จำลอง/เทสเก่าที่ยังส่งแค่ zone เดียวมาไม่มี hands (เช่น bonus-selftest.html)
+      registerSide(zoneToSide(zone));
+    }
+  });
 
   // tap fallback: แตะสลับบน/ล่างเอง ใช้กติกาเดียวกันทุกอย่างกับทาง gesture (registerSide ร่วมกัน)
   const tapHandlers = {};

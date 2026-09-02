@@ -11,7 +11,10 @@
 //   startGestureDetection(videoEl, onUpdate, { holdMs, bodySkeleton, onError, onPerf })
 //   holdMs default 1400ms — ปรับขึ้นจาก 800ms หลังครูรายงานว่าเลือกคำตอบผิดง่ายเกิน (เวลาไม่พอแก้ตัว)
 //   onUpdate({ zone, point, progress, confirmed, handLandmarks, poseLandmarks,
-//              handConnections, poseConnections, videoW, videoH })
+//              handConnections, poseConnections, videoW, videoH, hands })
+//   zone/point/progress/confirmed = มือเดียว (ตัวที่ยกสูงสุด) ใช้ตอบคำถามหลัก เหมือนเดิมทุกอย่าง
+//   hands = [{ zone, point }, ...] ทุกมือที่เห็น (ไม่เกิน 2) แยกอิสระต่อกัน — ใช้กับมินิเกมที่ต้องรู้
+//   ทั้งสองมือพร้อมกัน (เช่น "67" ที่ธรรมชาติท่าคือขยับสองมือสลับกัน)
 
 const MEDIAPIPE_VERSION = "1.0.1"; // ตรวจสอบแล้วว่าเป็นเวอร์ชัน stable ล่าสุดบน npm (ส.ค. 2026)
 const VISION_BUNDLE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
@@ -134,10 +137,50 @@ export function pointToZone(mx, y) {
   return candidate;
 }
 
+// สร้าง "ตัวติดตามโซน" แยกอิสระ 1 ชุด มี hysteresis ของตัวเอง (อัลกอริทึมเดียวกับ pointToZone() ข้างบน
+// เป๊ะๆ แค่ไม่ใช้ lastZone ตัวเดียวร่วมกันทั้งโมดูล) ใช้ตอนต้องติดตามหลายจุดพร้อมกันเป็นอิสระต่อกัน โดยไม่
+// ปนกับ/ไม่กระทบตัวติดตามหลัก (pointToZone) ที่ยังใช้ path เดิมสำหรับตอบคำถามด้วยมือเดียว
+// กรณีใช้จริง: ติดตามมือ 2 ข้างแยกกันในมินิเกม "67" (ท่าธรรมชาติคือขยับสองมือสลับกัน — ถ้าเลือกติดตาม
+// แค่มือเดียวแล้วระบบสลับไปดูอีกข้างกลางเฟรม จะเห็นข้อมูลกระตุกทั้งที่มือจริงๆ ขยับถูกต้อง)
+export function createZoneTracker() {
+  let trackerLastZone = null;
+  return {
+    classify(mx, y) {
+      const dx = mx - calibCx;
+      const dy = y - calibCy;
+      const candidate = dx < 0 ? (dy < 0 ? "tl" : "bl") : dy < 0 ? "tr" : "br";
+      if (trackerLastZone && candidate !== trackerLastZone) {
+        if (Math.abs(dx) < HYSTERESIS_MARGIN || Math.abs(dy) < HYSTERESIS_MARGIN) {
+          return trackerLastZone;
+        }
+      }
+      trackerLastZone = candidate;
+      return candidate;
+    },
+    reset() {
+      trackerLastZone = null;
+    },
+  };
+}
+
 // Exponential moving average ลดอาการสั่น/กระตุกของจุดที่จับได้ ให้ประสบการณ์ลื่นขึ้น
 const SMOOTHING = 0.55; // 0 = ไม่ smooth เลย, 1 = ไม่ขยับเลย
 let smoothX = null;
 let smoothY = null;
+
+// ตัวติดตามแยกต่อมือ (คีย์ด้วย handedness "Left"/"Right" จากโมเดล ซึ่งเสถียรข้ามเฟรมกว่า index ในอาร์เรย์
+// landmarks เฉยๆ — index อาจสลับได้ถ้ามือสองข้างสลับตำแหน่งการตรวจจับในเฟรมถัดไป) ใช้เสริมข้าง pointToZone
+// หลัก ไม่ได้แทนที่ — ยังคำนวณ zone/point แบบมือเดียว (ตัวสูงสุด) ไว้ให้โค้ดเดิม (ตอบคำถามหลัก) ใช้เหมือนเดิม
+const handTrackers = new Map(); // label -> { tracker, smoothX, smoothY }
+
+function getHandTracker(label) {
+  let t = handTrackers.get(label);
+  if (!t) {
+    t = { tracker: createZoneTracker(), smoothX: null, smoothY: null };
+    handTrackers.set(label, t);
+  }
+  return t;
+}
 
 // เลือก "มือที่ใช้ชี้" เมื่อเจอสองมือ — ใช้มือที่ยกสูงกว่า (y น้อยกว่า) ตรงกับสัญชาตญาณว่า
 // "มือที่ยกขึ้นมาคือมือที่ตั้งใจชี้" ส่วนอีกมือที่ห้อยอยู่ยังวาดโครงให้เห็นแต่ไม่นับเป็นตัวเลือก
@@ -170,6 +213,7 @@ export async function startGestureDetection(
   lastZone = null;
   currentZone = null;
   zoneStartTs = performance.now();
+  handTrackers.clear();
   let usePose = bodySkeleton && !!poseLandmarker;
 
   // --- FPS watchdog ---
@@ -218,8 +262,36 @@ export async function startGestureDetection(
     }
 
     const hands = handResult?.landmarks ?? [];
+    const handednesses = handResult?.handednesses ?? [];
     const poses = usePose ? poseResult?.landmarks ?? [] : [];
     const pointing = pickPointingHand(hands);
+
+    // ข้อมูลของ "ทุกมือ" ที่เห็นเฟรมนี้ (ไม่เกิน 2 ข้าง ตาม numHands:2) — แยกอิสระต่อมือด้วย
+    // createZoneTracker() ของตัวเอง ใช้กับมินิเกมที่อยากรู้ทั้งสองมือพร้อมกัน (เช่น "67") โดยไม่กระทบ
+    // zone/point แบบมือเดียวด้านล่างที่โค้ดเดิม (ตอบคำถามหลัก) ยังใช้เหมือนเดิมทุกอย่าง
+    const presentLabels = new Set();
+    const allHandsData = hands
+      .map((h, i) => {
+        const tip = h[8];
+        if (!tip) return null;
+        const label = handednesses[i]?.[0]?.categoryName ?? `hand${i}`;
+        presentLabels.add(label);
+        const mx = 1 - tip.x;
+        const t = getHandTracker(label);
+        t.smoothX = t.smoothX === null ? mx : t.smoothX * SMOOTHING + mx * (1 - SMOOTHING);
+        t.smoothY = t.smoothY === null ? tip.y : t.smoothY * SMOOTHING + tip.y * (1 - SMOOTHING);
+        return { zone: t.tracker.classify(t.smoothX, t.smoothY), point: { x: t.smoothX, y: t.smoothY } };
+      })
+      .filter(Boolean);
+
+    // มือที่เคยเห็นแต่หายไปจากเฟรมนี้แล้ว — รีเซ็ตทิ้ง กันค่า smoothing/hysteresis ค้างตอนกลับมาใหม่
+    for (const [label, t] of handTrackers) {
+      if (!presentLabels.has(label)) {
+        t.smoothX = null;
+        t.smoothY = null;
+        t.tracker.reset();
+      }
+    }
 
     const common = {
       handLandmarks: hands,
@@ -229,6 +301,7 @@ export async function startGestureDetection(
       videoW: videoEl.videoWidth,
       videoH: videoEl.videoHeight,
       fps: currentFps,
+      hands: allHandsData,
     };
 
     if (pointing) {
