@@ -423,98 +423,177 @@ export function runHandDanceFollow(ctx) {
   startRound();
 }
 
-// ============ เกม 5: ตกปลา (เดิมชื่อ "ไล่ตี Brainrot" — v2: reskin ตามไอเดียครู "ปลาว่ายเข้ามา ไล่จับ
-// ได้แต้มสุ่ม" กลไกเดิมทุกอย่างเป๊ะๆ (แค่เปลี่ยนธีม/ไอคอน) เพราะเป็น hold-ครั้งเดียวต่อ 1 ตัว ไม่ต้องสลับโซน
-// รัวๆ ต่อเนื่องแบบ 67 — ดูคอมเมนต์ตอนประกาศ BONUS_GAMES ด้านบนว่าทำไมเลือกกลไกแบบนี้แทน) ============
-export function runBrainrotSwat(ctx) {
-  const { corners, onScore, onEnd } = ctx;
-  const zones = ["tl", "tr", "bl", "br"];
+// ============ เกม 5: ตกปลา (v3: เขียนใหม่ทั้งหมดตามไอเดียครู "ปลาว่ายไปมาอิสระ 2-3 ตัวพร้อมกัน ชี้ค้าง
+// ทับตัวปลาแป๊บนึงจับได้แต้มสุ่ม" — v2 ก่อนหน้า (reskin จาก "ไล่ตี Brainrot") ยังโผล่นิ่งที่ 1 ใน 4 มุมคงที่
+// เหมือนของเดิม ไม่ใช่ปลาว่ายอิสระแบบที่ครูอยากได้จริงๆ
+//
+// เปลี่ยนจากระบบ 4 โซนคงที่ มาใช้ตำแหน่งต่อเนื่อง point:{x,y} (0-1 normalized) ที่ gesture-detection.js
+// ส่งมาอยู่แล้วทุกเฟรม (ตัวเดียวกับที่ hand-cursor ใช้วาดจุดติดตามมือ) เทียบระยะห่างจากตำแหน่งปลาสดๆ ตรงๆ
+// ไม่ผ่าน zone/quadrant เลย — ปลาเลยว่ายไปตำแหน่งไหนของจอก็ได้ ไม่ต้องยึดติด 4 มุม
+//
+// จับ = ต้องชี้ค้างทับตัวปลาต่อเนื่อง ~500ms (CATCH_HOLD_MS, ครูเลือกเองจาก 2 ทางเลือก: "จับทันที" เสี่ยง
+// คะแนนกระเด็นมั่วจากมือสั่นผ่านๆ vs "ค้างสั้นๆ" ตั้งใจชัดเจนกว่า) — สำคัญ: นี่ยังเป็นกลไก "hold ครั้งเดียวต่อ
+// เป้าหมาย 1 ตัว" เหมือนเกมอื่นที่ไม่เคยมีปัญหาตรวจจับ ไม่ใช่ "สลับเป้าหมายรัวๆ ต่อเนื่องหลายสิบครั้ง" แบบ 67 ที่
+// เพิ่งพักไป (ดูคอมเมนต์ยาวตอนประกาศ BONUS_GAMES ด้านบน) — จับ 1 ตัวไม่สำเร็จก็แค่ปลาตัวนั้นว่ายต่อ ไม่กระทบตัว
+// อื่น ต่างจาก 67 ที่พลาดจังหวะเดียวกระทบสถิติทั้งเกม ============
+export function runFishSwim(ctx) {
+  const { corners, stage, onScore, onEnd } = ctx;
   const DURATION_MS = 10000;
-  // ปลา/สัตว์น้ำ emoji ล้วนๆ — ไม่ใช้ asset/ภาพจากที่ไหนที่มีลิขสิทธิ์
-  const CREATURES = ["🐟", "🐠", "🐡", "🦐", "🦑"];
+  const MAX_FISH = 3;
+  const CATCH_HOLD_MS = 500;
+  // ระยะที่นับว่า "ชี้ทับตัวปลา" — ใช้กรอบสี่เหลี่ยม (แกน x/y แยกกัน) แทนระยะวงกลม เพราะจอมือถือแนวตั้ง
+  // อัตราส่วนกว้าง:ยาวไม่ใช่ 1:1 ถ้าใช้ระยะวงกลมแบบ normalized ตรงๆ วงจะรีไม่เท่ากันจริงบนจอ ตั้งใจให้กว้าง
+  // พอสมควร (ใจดีกว่าความแม่นยำจริงของกล้อง) จะได้ไม่ต้องชี้เป๊ะกลางตัวปลาเป๊ะๆ
+  const CATCH_RX = 0.13;
+  const CATCH_RY = 0.085;
+  const MIN_Y = 0.22; // เว้นโซนบน (หัวข้อ/badge) กับล่าง (แถบ progress) ไว้ ไม่ให้ปลาว่ายไปโดนบัง
+  const MAX_Y = 0.78;
+  const MARGIN_X = 0.08;
+  const FISH_EMOJI = ["🐟", "🐠", "🐡", "🦐", "🦑"];
+
+  resetCornerLabels(corners); // เกมนี้ไม่ใช้กล่อง 4 มุมแล้ว เคลียร์ label ค้างจากเกมก่อนหน้ากันสับสน
 
   const startTime = performance.now();
-  let active = {}; // zone -> { timeout }
-  let combo = 0;
+  let fishes = []; // { el, x, y, vx, vy, catchStartTs }
+  let ended = false;
+  let rafId = null;
   let spawnTimeout = null;
+  let lastTick = startTime;
 
-  resetCornerLabels(corners);
+  function randRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function spawnFish() {
+    const el = document.createElement("div");
+    el.className = "fish-swim";
+    el.textContent = FISH_EMOJI[Math.floor(Math.random() * FISH_EMOJI.length)];
+    stage.appendChild(el);
+    const fish = {
+      el,
+      x: randRange(MARGIN_X, 1 - MARGIN_X),
+      y: randRange(MIN_Y, MAX_Y),
+      vx: (Math.random() < 0.5 ? -1 : 1) * randRange(0.07, 0.16), // สัดส่วนจอ/วินาที
+      vy: (Math.random() < 0.5 ? -1 : 1) * randRange(0.015, 0.045),
+      catchStartTs: null,
+    };
+    fishes.push(fish);
+    return fish;
+  }
+
+  function removeFish(fish) {
+    fish.el.remove();
+    fishes = fishes.filter((f) => f !== fish);
+  }
+
+  function scheduleReplacement() {
+    clearTimeout(spawnTimeout);
+    spawnTimeout = setTimeout(maybeSpawn, 250);
+  }
+
+  function catchFish(fish) {
+    const points = 20 + Math.floor(Math.random() * 61); // สุ่ม 20-80 แต้มตามที่ครูอยากได้ "แต้มสุ่ม"
+    onScore(points);
+    removeFish(fish);
+    scheduleReplacement();
+  }
 
   function cleanup() {
+    cancelAnimationFrame(rafId);
     clearTimeout(spawnTimeout);
-    Object.values(active).forEach((a) => clearTimeout(a.timeout));
-    active = {};
+    clearTimeout(endTimeout);
+    fishes.forEach((f) => f.el.remove());
+    fishes = [];
     ctx.setZoneHandler(null);
-    resetCornerLabels(corners);
     ctx.onCleanupExtra?.();
   }
 
-  function pickFreeZone() {
-    const free = zones.filter((z) => !active[z]);
-    if (free.length === 0) return null;
-    return free[Math.floor(Math.random() * free.length)];
+  function finish() {
+    if (ended) return;
+    ended = true;
+    cleanup();
+    onEnd();
   }
 
-  function despawn(zone, hit) {
-    if (!active[zone]) return;
-    clearTimeout(active[zone].timeout);
-    delete active[zone];
-    corners[zone].textContent = "";
-    corners[zone].classList.remove("target");
-    if (!hit) combo = 0;
+  // จบเกมด้วย setTimeout เหมือนเกมอื่นทุกเกมในไฟล์นี้ (ไม่ใช่เช็คเวลาใน tick() แบบที่เคยเขียนไว้รอบแรก) —
+  // เจอบั๊กจริงตอนทดสอบ: browser จะ "หยุด" requestAnimationFrame เองเวลาแท็บไม่ได้อยู่ตรงหน้า/ไม่ visible
+  // (ประหยัดแบต) ถ้าเช็คเงื่อนไขจบเกมอยู่ใน tick() (RAF) แล้วแท็บถูกสลับไปที่อื่นแป๊บเดียวระหว่างเล่น เกมจะ
+  // "ค้างไม่จบ" ไปเลยจนกว่าจะกลับมาที่แท็บ (คะแนนยังเข้าปกติเพราะ checkCatch ผูกกับสตรีมกล้อง ไม่ใช่ RAF แต่
+  // onEnd()/cleanup ไม่มีวันถูกเรียก) setTimeout ไม่โดน throttle ขนาดนั้น (แค่หน่วงได้บ้างในแท็บพักนานๆ แต่
+  // ไม่มีวันหยุดสนิทแบบ RAF) จบเกมได้แน่นอนกว่า ส่วน tick() เหลือหน้าที่แค่ขยับตำแหน่งปลาให้ลื่นตาเท่านั้น
+  const endTimeout = setTimeout(finish, DURATION_MS);
+
+  function tick() {
+    if (ended) return;
+    const now = performance.now();
+    const dt = Math.min((now - lastTick) / 1000, 0.1); // cap กัน dt พุ่งเวลาแท็บถูก throttle/สลับแอปสักครู่
+    lastTick = now;
+
+    for (const fish of fishes) {
+      fish.x += fish.vx * dt;
+      fish.y += fish.vy * dt;
+      // เด้งกลับที่ขอบเขต แทนที่จะว่ายทะลุออกจากพื้นที่เล่นหายไป
+      if (fish.x < MARGIN_X || fish.x > 1 - MARGIN_X) fish.vx *= -1;
+      if (fish.y < MIN_Y || fish.y > MAX_Y) fish.vy *= -1;
+      fish.x = Math.min(Math.max(fish.x, MARGIN_X), 1 - MARGIN_X);
+      fish.y = Math.min(Math.max(fish.y, MIN_Y), MAX_Y);
+      fish.el.style.left = `${fish.x * 100}%`;
+      fish.el.style.top = `${fish.y * 100}%`;
+      // หันหน้าปลาตามทิศที่ว่ายจริง (ว่ายซ้ายก็พลิกซ้าย) + ขยายเล็กน้อยตอนกำลังโดนจับค้างอยู่ ให้เห็นชัดว่า
+      // "ใกล้จะได้แล้ว" — รวมไว้ transform เดียว (ไม่แยก class ควบคุม transform เพราะ inline style ทับ
+      // stylesheet เสมอ ถ้าแยกกันจะชนกัน .catching ในสไตล์ชีทจะไม่มีผลอะไรเลย)
+      const catching = fish.catchStartTs !== null;
+      const scale = catching ? 1.32 : 1;
+      fish.el.style.transform = `translate(-50%, -50%) scaleX(${fish.vx < 0 ? -1 : 1}) scale(${scale})`;
+      fish.el.classList.toggle("catching", catching);
+    }
+
+    rafId = requestAnimationFrame(tick);
   }
 
-  function spawnCreature() {
-    const elapsed = performance.now() - startTime;
-    if (elapsed >= DURATION_MS) {
-      if (Object.keys(active).length === 0) {
-        cleanup();
-        onEnd();
+  function maybeSpawn() {
+    if (ended) return;
+    if (fishes.length < MAX_FISH) spawnFish();
+    const remaining = DURATION_MS - (performance.now() - startTime);
+    if (remaining > 600 && fishes.length < MAX_FISH) {
+      spawnTimeout = setTimeout(maybeSpawn, randRange(700, 1500));
+    }
+  }
+
+  function checkCatch(px, py) {
+    const now = performance.now();
+    for (const fish of fishes) {
+      const within =
+        px != null && py != null && Math.abs(px - fish.x) <= CATCH_RX && Math.abs(py - fish.y) <= CATCH_RY;
+      if (within) {
+        if (fish.catchStartTs === null) fish.catchStartTs = now;
+        else if (now - fish.catchStartTs >= CATCH_HOLD_MS) catchFish(fish);
       } else {
-        spawnTimeout = setTimeout(spawnCreature, 300); // รอให้ตัวที่ยังค้างอยู่หมดอายุก่อนค่อยจบ
+        fish.catchStartTs = null;
       }
-      return;
     }
-
-    const zone = pickFreeZone();
-    if (zone) {
-      const emoji = CREATURES[Math.floor(Math.random() * CREATURES.length)];
-      corners[zone].textContent = emoji;
-      corners[zone].classList.add("target");
-      const timeout = setTimeout(() => despawn(zone, false), 900);
-      active[zone] = { timeout };
-    }
-
-    const progress = elapsed / DURATION_MS;
-    const allowDouble = progress > 0.6; // ช่วงท้ายมีโอกาสเกิดซ้อนกัน 2 ตัว
-    const gap = Math.max(950 - progress * 400, 450);
-    spawnTimeout = setTimeout(spawnCreature, allowDouble && Math.random() < 0.5 ? gap / 2 : gap);
   }
 
-  function onHit(zone) {
-    if (!active[zone]) return;
-    despawn(zone, true);
-    combo += 1;
-    onScore(35 + Math.min(combo - 1, 5) * 5); // combo multiplier มี cap กันคะแนนพุ่งเกินไป
+  // ปลาเริ่มต้น 2 ตัวทันที ไม่ต้องรอคิว spawn แรก
+  spawnFish();
+  spawnFish();
+  maybeSpawn();
+  rafId = requestAnimationFrame(tick);
+
+  ctx.setZoneHandler(({ point }) => checkCatch(point?.x ?? null, point?.y ?? null));
+
+  // tap fallback: แตะตัวปลาโดยตรงจับได้ทันที ไม่ต้องค้าง (การแตะเองคือความตั้งใจชัดเจนอยู่แล้ว ต่างจากชี้ด้วย
+  // กล้องที่อาจสั่น/กวาดผ่านโดยไม่ตั้งใจ) ใช้ event delegation ที่ stage เพราะปลา spawn/หายตลอดเวลา
+  function onStageClick(e) {
+    const el = e.target.closest(".fish-swim");
+    if (!el) return;
+    const fish = fishes.find((f) => f.el === el);
+    if (fish) catchFish(fish);
   }
-
-  ctx.setZoneHandler(({ zone }) => {
-    if (zone) onHit(zone);
-  });
-
-  const tapHandlers = {};
-  Object.entries(corners).forEach(([zone, el]) => {
-    const handler = () => onHit(zone);
-    tapHandlers[zone] = handler;
-    el.addEventListener("click", handler);
-  });
+  stage.addEventListener("click", onStageClick);
   ctx.onCleanupExtra = () => {
-    Object.entries(tapHandlers).forEach(([zone, handler]) =>
-      corners[zone].removeEventListener("click", handler)
-    );
+    stage.removeEventListener("click", onStageClick);
   };
-
-  spawnCreature();
 }
 
 export const BONUS_RUNNERS = {
@@ -522,5 +601,5 @@ export const BONUS_RUNNERS = {
   "reach-sky": runReachForSky,
   "hand-bounce": runHandBounce,
   "hand-dance-follow": runHandDanceFollow,
-  "brainrot-swat": runBrainrotSwat,
+  "brainrot-swat": runFishSwim,
 };

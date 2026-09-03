@@ -19,7 +19,7 @@
     <button id="btn-sky">Test Reach for Sky (hold hand up)</button>
     <button id="btn-bounce">Test Hand Bounce (switch sides freely, no beat)</button>
     <button id="btn-dance">Test Hand Dance Follow (perfect play)</button>
-    <button id="btn-brainrot">Test Brainrot Swat (hit everything instantly)</button>
+    <button id="btn-brainrot">Test Fish Swim (sweep point across play area)</button>
     <button id="btn-all">Run All</button>
   </div>
   <div id="log">พร้อมทดสอบ...</div>
@@ -36,7 +36,7 @@
       runReachForSky,
       runHandBounce,
       runHandDanceFollow,
-      runBrainrotSwat,
+      runFishSwim,
     } from "../assets/js/bonus-engine.js";
 
     const logEl = document.getElementById("log");
@@ -75,6 +75,7 @@
         },
         fireZone: (zone) => zoneHandler?.({ zone, point: zone ? { x: 0.5, y: 0.5 } : null }),
         fireY: (y) => zoneHandler?.({ zone: null, point: { x: 0.5, y } }),
+        firePoint: (x, y) => zoneHandler?.({ zone: null, point: { x, y } }),
         getScore: () => totalScore,
       };
     }
@@ -137,25 +138,44 @@
       await wait(9000); // ปล่อยให้ safety timeout (7s หลัง accepting เริ่ม) จบเกมเอง เพราะเราไม่รู้ลำดับที่ถูกต้อง
     }
 
-    async function testBrainrotSwat() {
-      log("\n=== Brainrot Swat: ยิงทุกโซนถี่ๆ ตลอด 10 วิ (ควรโดนแทบทุกตัวที่โผล่) ===");
-      const { ctx, fireZone } = makeCtx("Brainrot Swat");
-      runBrainrotSwat(ctx);
+    async function testFishSwim() {
+      log(
+        "\n=== Fish Swim: ปลาว่ายอิสระตอนนี้ไม่ได้อยู่ที่ 4 มุมคงที่แล้ว เลยไม่รู้ตำแหน่งจริงล่วงหน้า —\n" +
+          "     จำลองด้วยการกวาดจุดชี้เป็นตาราง 3x3 ทั่วพื้นที่เล่น ค้างจุดละ 650ms (นานกว่า CATCH_HOLD_MS=500ms)\n" +
+          "     วนตลอด 10 วิ ควรมีโอกาสจับปลาได้อย่างน้อยบางตัว (คะแนน > 0) ไม่ใช่การยืนยัน exact ผลลัพธ์แบบเกมอื่น ==="
+      );
+      const { ctx, firePoint, getScore } = makeCtx("Fish Swim");
+      runFishSwim(ctx);
+      const xs = [0.15, 0.5, 0.85];
+      const ys = [0.3, 0.5, 0.7];
+      const points = [];
+      xs.forEach((x) => ys.forEach((y) => points.push([x, y])));
+      const DWELL_MS = 650; // นานกว่า CATCH_HOLD_MS (500ms) ในเกมจริง กันเคสกวาดผ่านไม่ทันจับ
       const start = Date.now();
+      // ยิงจุดซ้ำๆ ทุก 50ms ระหว่างค้างที่จุดเดิม (จำลองเฟรมกล้องจริง ~20fps) ไม่ใช่ยิงครั้งเดียวแล้วขยับ —
+      // checkCatch() ในเกมต้องถูกเรียกซ้ำที่ตำแหน่งเดิมต่อเนื่องถึงจะนับเวลา "ค้าง" สะสมได้ครบ CATCH_HOLD_MS
       const interval = setInterval(() => {
-        if (Date.now() - start > 10500) {
+        const elapsed = Date.now() - start;
+        if (elapsed > 10500) {
           clearInterval(interval);
+          log(
+            getScore() > 0
+              ? `  (สุ่มกวาดจุดจับได้บางตัวจริง คะแนนรวม ${getScore()} > 0 — logic การจับ/สุ่มแต้ม/spawn ใหม่ทำงาน)`
+              : "  ⚠️ กวาดครบแล้วยังไม่ได้คะแนนเลย ลองรันซ้ำอีกครั้ง (ตำแหน่งปลาสุ่มทุกครั้ง อาจแค่โชคไม่ดีรอบนี้)"
+          );
           return;
         }
-        ["tl", "tr", "bl", "br"].forEach((z) => fireZone(z));
-      }, 100);
+        const pointIndex = Math.floor(elapsed / DWELL_MS) % points.length;
+        const [x, y] = points[pointIndex];
+        firePoint(x, y);
+      }, 50);
     }
 
     document.getElementById("btn-skibidi").onclick = testSkibidi;
     document.getElementById("btn-sky").onclick = testReachSky;
     document.getElementById("btn-bounce").onclick = testHandBounce;
     document.getElementById("btn-dance").onclick = testHandDanceFollow;
-    document.getElementById("btn-brainrot").onclick = testBrainrotSwat;
+    document.getElementById("btn-brainrot").onclick = testFishSwim;
     document.getElementById("btn-all").onclick = async () => {
       await testSkibidi();
       await wait(6000);
@@ -165,7 +185,7 @@
       await wait(11000);
       await testHandDanceFollow();
       await wait(9000);
-      await testBrainrotSwat();
+      await testFishSwim();
     };
   </script>
 </body>

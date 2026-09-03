@@ -556,6 +556,26 @@ button:disabled {
   transition: left 0.05s linear, top 0.05s linear; /* ลื่นขึ้นเล็กน้อยระหว่างเฟรม ไม่ใช่กระโดดแข็งๆ */
 }
 
+/* ปลาว่ายอิสระ (เกม "ตกปลา") — ตำแหน่ง left/top เป็น % อัปเดตทุกเฟรมจาก JS (requestAnimationFrame) ตรงๆ
+   เหมือน .hand-cursor ข้างบน ไม่ใช้ CSS transition กับ left/top (จะยิ่งหน่วง/สะดุดถ้าอัปเดตทุกเฟรมอยู่แล้ว)
+   ส่วน transform (พลิกทิศทาง/ขยายตอนกำลังจับ) เปลี่ยนไม่บ่อยเท่า เลย transition ได้เนียนๆ ไม่กระทบเฟรมเรต */
+.fish-swim {
+  position: absolute;
+  font-size: 2.4rem;
+  line-height: 1;
+  z-index: 5;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.fish-swim.catching {
+  filter: drop-shadow(0 0 10px #4ade80) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
 .hold-progress {
   position: absolute;
   bottom: 24px;
