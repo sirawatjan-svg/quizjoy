@@ -327,7 +327,13 @@ export async function startGestureDetection(
     };
 
     if (pointing) {
-      lostSinceTs = null; // มือกลับมาติดเฟรมแล้ว ล้างนาฬิกา "หลุดเฟรม" ทิ้ง
+      if (lostSinceTs !== null) {
+        // กำลังกลับมาจากช่วงผ่อนผัน — เลื่อน zoneStartTs ไปข้างหน้าเท่ากับเวลาที่หลุดเฟรมไปพอดี (= "หยุด
+        // นาฬิกาไว้ชั่วคราว" ระหว่างหลุด ไม่ใช่ปล่อยให้เดินต่อ) กันเคส heldMs ทะลุ holdMs ไปเองระหว่างที่มือ
+        // ไม่ได้อยู่ในเฟรมจริงๆ (ดูคอมเมนต์ยาวที่ branch ผ่อนผันด้านล่างว่าทำไมเรื่องนี้ถึงสำคัญมาก)
+        zoneStartTs += now - lostSinceTs;
+        lostSinceTs = null;
+      }
       const tip = pointing[8];
       const mx = 1 - tip.x; // กลับด้านให้ตรงกับภาพ mirror บนจอ (กล้องหน้า)
 
@@ -349,16 +355,24 @@ export async function startGestureDetection(
         frozen: false,
       });
     } else if (currentZone !== null && (lostSinceTs === null || now - lostSinceTs < LOST_GRACE_MS)) {
-      // หลุดเฟรมแต่ยังอยู่ในช่วงผ่อนผัน (ดูคอมเมนต์ที่ประกาศ LOST_GRACE_MS ด้านบน) — ถือว่ายังชี้ตำแหน่ง/โซน
-      // เดิมต่อ ไม่รีเซ็ตอะไรเลย นาฬิกาค้างเดินต่อเนื่องเหมือนไม่มีอะไรเกิดขึ้น
+      // หลุดเฟรมแต่ยังอยู่ในช่วงผ่อนผัน — ถือว่ายังชี้ตำแหน่ง/โซนเดิมต่อ "ไม่รีเซ็ต" แต่นาฬิกาต้อง "หยุดนับ
+      // ชั่วคราว" ด้วย (ใช้ heldMs ค่าเดิม ณ วินาทีที่หลุด ไม่คำนวณจาก now ซ้ำทุกเฟรม) ไม่ใช่ปล่อยให้เดินต่อ —
+      // เดิม (บั๊กที่เพิ่งเจอจากการทดสอบจริงบน iPhone) ปล่อยให้ heldMs เดินต่อด้วย now แม้มือจะไม่อยู่ในเฟรม
+      // จริงๆ เลย ผลคือถ้า heldMs ใกล้ครบ holdMs พอดีตอนมือหลุด (เช่น กำลังขยับมือย้ายไปจุดถัดไปพอดี) แค่หลุด
+      // เฟรมแป๊บเดียวระหว่างเปลี่ยนท่า ก็ทะลุ holdMs แล้ว confirmed:true ยิงคำตอบให้เองทั้งที่ผู้เล่นไม่ได้
+      // ตั้งใจชี้ค้างจริงจนครบเวลาเลย — นี่คือสาเหตุของ "เลือกคำตอบไปเองก่อนจะตั้งใจ" ที่ครูรายงานมาบน iPhone
+      // (FPS สูง เจอเคสนี้ง่ายกว่า เพราะ progress ไต่ขึ้นใกล้ 100% เร็ว โอกาสหลุดเฟรมตรงจังหวะท้ายๆ พอดีสูงกว่า)
+      // ทางแก้: ห้าม confirm ระหว่างช่วงผ่อนผันเด็ดขาด (ต้องเห็นมือจริงในเฟรมถึงจะยืนยันคำตอบได้) และห้าม
+      // heldMs ขยับต่อจนกว่าจะเห็นมือกลับมาจริง (ดู "zoneStartTs += now - lostSinceTs" ใน branch pointing
+      // ด้านบน ซึ่งจะ "เติมเวลาที่หายไป" กลับเข้า zoneStartTs ให้ตอนมือกลับมา แทนที่จะนับเวลาที่หลุดไปด้วย)
+      const frozenHeldMs = lostSinceTs === null ? now - zoneStartTs : lostSinceTs - zoneStartTs;
       if (lostSinceTs === null) lostSinceTs = now;
-      const heldMs = now - zoneStartTs;
       onUpdate({
         ...common,
         zone: currentZone,
         point: smoothX !== null ? { x: smoothX, y: smoothY } : null,
-        progress: Math.min(heldMs / holdMs, 1),
-        confirmed: heldMs >= holdMs,
+        progress: Math.min(frozenHeldMs / holdMs, 1),
+        confirmed: false, // ห้าม confirm ตอนไม่เห็นมือจริงในเฟรมเด็ดขาด ไม่ว่า heldMs ที่ค้างไว้จะครบแค่ไหน
         frozen: true, // กำลังใช้ "ค่าค้าง" จากตอนก่อนหลุดเฟรม ไม่ใช่ตำแหน่งสดจากกล้องเฟรมนี้
       });
     } else {
