@@ -156,7 +156,8 @@
       // checkCatch() ในเกมต้องถูกเรียกซ้ำที่ตำแหน่งเดิมต่อเนื่องถึงจะนับเวลา "ค้าง" สะสมได้ครบ CATCH_HOLD_MS
       const interval = setInterval(() => {
         const elapsed = Date.now() - start;
-        if (elapsed > 10500) {
+        if (elapsed > 15500) {
+          // ตรง DURATION_MS ในเกมจริง (15000ms หลังปรับตามฟีดแบ็กครูว่ารอบสั้นไป) + กันชนนิดหน่อย
           clearInterval(interval);
           log(
             getScore() > 0

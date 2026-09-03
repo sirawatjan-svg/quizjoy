@@ -438,20 +438,31 @@ export function runHandDanceFollow(ctx) {
 // อื่น ต่างจาก 67 ที่พลาดจังหวะเดียวกระทบสถิติทั้งเกม ============
 export function runFishSwim(ctx) {
   const { corners, stage, onScore, onEnd } = ctx;
-  const DURATION_MS = 10000;
+  // v4: ฟีดแบ็กครูหลังทดสอบจริง — "จับยากเกินไป" (ปลาเล็ก/hitbox แคบไป), เวลารอบสั้นไป, และกล่องคำตอบ 4
+  // มุมเดิม (ว่างเปล่าแต่ยังโชว์เป็นกรอบสีทึบตลอดเกม) บังตา/รู้สึกเกะกะระหว่างไล่จับปลา — ปรับ 3 จุด:
+  // ขยายปลา+hitbox ให้ใหญ่ขึ้นชัดเจน, ยืดเวลารอบให้นานขึ้น, และซ่อนกล่อง 4 มุมทิ้งระหว่างเล่นเกมนี้ (เกมอื่น
+  // ยังใช้กล่องพวกนี้เป็นพื้นที่เล่นอยู่ตามปกติ แค่เกมนี้ไม่ได้ใช้แล้วเลยไม่จำเป็นต้องโชว์)
+  const DURATION_MS = 15000;
   const MAX_FISH = 3;
   const CATCH_HOLD_MS = 500;
   // ระยะที่นับว่า "ชี้ทับตัวปลา" — ใช้กรอบสี่เหลี่ยม (แกน x/y แยกกัน) แทนระยะวงกลม เพราะจอมือถือแนวตั้ง
-  // อัตราส่วนกว้าง:ยาวไม่ใช่ 1:1 ถ้าใช้ระยะวงกลมแบบ normalized ตรงๆ วงจะรีไม่เท่ากันจริงบนจอ ตั้งใจให้กว้าง
-  // พอสมควร (ใจดีกว่าความแม่นยำจริงของกล้อง) จะได้ไม่ต้องชี้เป๊ะกลางตัวปลาเป๊ะๆ
-  const CATCH_RX = 0.13;
-  const CATCH_RY = 0.085;
+  // อัตราส่วนกว้าง:ยาวไม่ใช่ 1:1 ถ้าใช้ระยะวงกลมแบบ normalized ตรงๆ วงจะรีไม่เท่ากันจริงบนจอ ขยายให้กว้างขึ้น
+  // อีกรอบ (จากที่ครูรายงานว่ายังจับยากไป) ใจดีกว่าความแม่นยำจริงของกล้องพอสมควร ไม่ต้องชี้เป๊ะกลางตัวปลาเลย
+  const CATCH_RX = 0.19;
+  const CATCH_RY = 0.13;
   const MIN_Y = 0.22; // เว้นโซนบน (หัวข้อ/badge) กับล่าง (แถบ progress) ไว้ ไม่ให้ปลาว่ายไปโดนบัง
   const MAX_Y = 0.78;
   const MARGIN_X = 0.08;
   const FISH_EMOJI = ["🐟", "🐠", "🐡", "🦐", "🦑"];
 
   resetCornerLabels(corners); // เกมนี้ไม่ใช้กล่อง 4 มุมแล้ว เคลียร์ label ค้างจากเกมก่อนหน้ากันสับสน
+  // ซ่อนกล่องคำตอบ 4 มุมไปเลยทั้งเกม (ว่างเปล่าอยู่แล้วแต่ .answer-corner ยังมีพื้นหลังสีทึบของตัวเอง โชว์
+  // เป็นกรอบสี่เหลี่ยมค้างอยู่ตลอด ครูรายงานว่าเกะกะ/บังตาเวลาไล่จับปลาที่ว่ายผ่านบริเวณนั้น) — opacity แทน
+  // display:none เพราะ .answer-corner มี transition อยู่แล้ว จะได้จาง/โผล่กลับมานุ่มนวลไม่กระตุก
+  Object.values(corners).forEach((el) => {
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+  });
 
   const startTime = performance.now();
   let fishes = []; // { el, x, y, vx, vy, catchStartTs }
@@ -504,6 +515,10 @@ export function runFishSwim(ctx) {
     clearTimeout(endTimeout);
     fishes.forEach((f) => f.el.remove());
     fishes = [];
+    Object.values(corners).forEach((el) => {
+      el.style.opacity = "";
+      el.style.pointerEvents = "";
+    });
     ctx.setZoneHandler(null);
     ctx.onCleanupExtra?.();
   }
