@@ -533,7 +533,14 @@ function submitAnswer(zone) {
 }
 
 function onZoneUpdate(frame) {
-  const { zone, point, progress, confirmed, hands } = frame;
+  const { zone, point, progress, confirmed, hands, fps, handDetected, frozen } = frame;
+
+  // Diagnostic badge (มุมซ้ายบน ทับภาพกล้อง) — โชว์ค่าดิบสดๆ ทุกเฟรม ไม่ว่าอยู่โหมดไหน เพิ่มขึ้นมาหลัง
+  // ฟีดแบ็กครูว่า "ค้าง/ไม่ตรวจจับ" แต่แก้แบบเดา (grace period กันมือหลุดเฟรม) แล้วครูทดสอบจริงบอกว่าแทบไม่
+  // ต่างจากเดิม — แปลว่าเดาผิดจุด/ไม่ครบสาเหตุ ต้องมีข้อมูลจริงจากเครื่องจริงมาดูแทนการเดาต่อ:
+  // ✋/⏳/✗ = เจอมือจริงเฟรมนี้ / ใช้ค่าค้างจากช่วงผ่อนผัน / ไม่เจอมือเลย, ตามด้วยโซนที่จับได้กับ % ค้าง
+  const handIcon = handDetected ? "✋" : frozen ? "⏳" : "✗";
+  perfBadge.textContent = `${fps ?? "-"}fps ${handIcon} ${zone ?? "-"} ${Math.round((progress || 0) * 100)}%`;
 
   // อัปเดตจุดติดตามมือทุกครั้งเสมอ ไม่ว่าจะอยู่โหมดคำถามหรือโหมดบอนัส — เดิมโค้ดนี้ return ก่อนถึงบรรทัดนี้
   // ตอนอยู่โหมดบอนัส ทำให้ไม่เห็นจุดติดตามเลยระหว่างเล่นมินิเกม (ทั้งที่มินิเกมคือเรื่องขยับมือล้วนๆ)
@@ -722,9 +729,8 @@ startBtn.addEventListener("click", async () => {
     // ตัดโมเดล pose ตัวที่สองออกไปเลย ช่วยให้เหลือ CPU/GPU ให้ hand-tracking แม่นและลื่นขึ้นด้วย)
     startGestureDetection(cameraFeed, onZoneUpdate, {
       bodySkeleton: false,
-      onPerf: ({ fps }) => {
-        perfBadge.textContent = `${fps} fps`;
-      },
+      // perfBadge อัปเดตทุกเฟรมจาก onZoneUpdate เองแล้ว (รวม fps + สถานะมือ/โซน/% ค้าง) ไม่ต้องพึ่ง onPerf
+      // (เดิม onPerf อัปเดตแค่ fps ทุก 1 วิ ซ้ำซ้อน/ข้อมูลน้อยกว่า)
       onError: () => {
         setupStatus.textContent = "";
         showBonusToast("โหมดชี้มือใช้ไม่ได้ตอนนี้ — แตะจอตอบแทนได้เลย");

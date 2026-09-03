@@ -164,11 +164,13 @@ button:disabled {
   left: 8px;
   z-index: 6;
   background: rgba(15,23,42,0.75);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 0.7rem;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.68rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace; /* ตัวเลข/ไอคอนอยู่นิ่ง อ่านง่ายตอนเทสสด */
+  white-space: nowrap;
   pointer-events: none;
 }
 

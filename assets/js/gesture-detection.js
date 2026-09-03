@@ -11,12 +11,15 @@
 //   startGestureDetection(videoEl, onUpdate, { holdMs, bodySkeleton, onError, onPerf })
 //   holdMs default 1400ms — ปรับขึ้นจาก 800ms หลังครูรายงานว่าเลือกคำตอบผิดง่ายเกิน (เวลาไม่พอแก้ตัว)
 //   onUpdate({ zone, point, progress, confirmed, handLandmarks, poseLandmarks,
-//              handConnections, poseConnections, videoW, videoH, hands })
+//              handConnections, poseConnections, videoW, videoH, hands, fps, handDetected, frozen })
 //   zone/point/progress/confirmed = มือเดียว (ตัวที่ยกสูงสุด) ใช้ตอบคำถามหลัก เหมือนเดิมทุกอย่าง
 //   hands = [{ zone, point }, ...] ทุกมือที่เห็น (ไม่เกิน 2) แยกอิสระต่อกัน — ใช้กับมินิเกมที่ต้องรู้
 //   ทั้งสองมือพร้อมกัน (เช่น "67" ที่ธรรมชาติท่าคือขยับสองมือสลับกัน)
 //   มือหลุดเฟรมสั้นๆ (< LOST_GRACE_MS = 350ms) จะไม่ทำให้ zone/progress รีเซ็ต (ดูคอมเมนต์ LOST_GRACE_MS
 //   ด้านล่าง) — กันอาการ "ชี้แล้วค้าง ไม่ติดสักที" บนเครื่องที่หลุดจับมือบ่อย (Android/ชี้ 2 นิ้ว)
+//   handDetected = เฟรมนี้กล้องเจอมือจริงไหม (raw, ไม่นับช่วงผ่อนผัน) / frozen = zone/point ที่ส่งมาเป็น
+//   "ค่าค้าง" จากช่วงผ่อนผันหรือเปล่า — ใช้แยกแยะตอนดีบักว่าอาการค้างมาจาก "ไม่เจอมือ" หรือ "เจอมือ นับเวลา
+//   ไม่ครบ" (ดู #diag-badge ใน student/app.js — โชว์ค่าดิบพวกนี้สดๆ บนจอตอนเทสจริง)
 
 const MEDIAPIPE_VERSION = "1.0.1"; // ตรวจสอบแล้วว่าเป็นเวอร์ชัน stable ล่าสุดบน npm (ส.ค. 2026)
 const VISION_BUNDLE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
@@ -318,6 +321,9 @@ export async function startGestureDetection(
       videoH: videoEl.videoHeight,
       fps: currentFps,
       hands: allHandsData,
+      // handDetected = เฟรมนี้กล้องเจอมือ "จริง" ไหม (ไม่นับช่วงผ่อนผัน) ใช้แยกแยะเวลาดีบักว่าอาการค้าง
+      // มาจาก "กล้องไม่เจอมือ" หรือ "เจอมือแต่ยังนับเวลาไม่ครบ" — ดู test/diagnostic-overlay ใน student/app.js
+      handDetected: !!pointing,
     };
 
     if (pointing) {
@@ -340,6 +346,7 @@ export async function startGestureDetection(
         point: { x: smoothX, y: smoothY },
         progress: Math.min(heldMs / holdMs, 1),
         confirmed: heldMs >= holdMs,
+        frozen: false,
       });
     } else if (currentZone !== null && (lostSinceTs === null || now - lostSinceTs < LOST_GRACE_MS)) {
       // หลุดเฟรมแต่ยังอยู่ในช่วงผ่อนผัน (ดูคอมเมนต์ที่ประกาศ LOST_GRACE_MS ด้านบน) — ถือว่ายังชี้ตำแหน่ง/โซน
@@ -352,6 +359,7 @@ export async function startGestureDetection(
         point: smoothX !== null ? { x: smoothX, y: smoothY } : null,
         progress: Math.min(heldMs / holdMs, 1),
         confirmed: heldMs >= holdMs,
+        frozen: true, // กำลังใช้ "ค่าค้าง" จากตอนก่อนหลุดเฟรม ไม่ใช่ตำแหน่งสดจากกล้องเฟรมนี้
       });
     } else {
       // หลุดเฟรมนานเกินช่วงผ่อนผัน (หรือไม่เคยจับโซนได้เลยตั้งแต่แรก) — ถือว่ามือหายไปจากจอจริงๆ รีเซ็ตทุกอย่าง
@@ -360,7 +368,7 @@ export async function startGestureDetection(
       smoothY = null;
       lastZone = null; // มือหลุดเฟรม รีเซ็ต hysteresis กันค้างโซนเก่าตอนมือกลับเข้ามาที่อื่น
       lostSinceTs = null;
-      onUpdate({ ...common, zone: null, point: null, progress: 0, confirmed: false });
+      onUpdate({ ...common, zone: null, point: null, progress: 0, confirmed: false, frozen: false });
     }
 
     requestAnimationFrame(loop);
