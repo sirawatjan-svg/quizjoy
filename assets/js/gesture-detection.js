@@ -15,6 +15,8 @@
 //   zone/point/progress/confirmed = มือเดียว (ตัวที่ยกสูงสุด) ใช้ตอบคำถามหลัก เหมือนเดิมทุกอย่าง
 //   hands = [{ zone, point }, ...] ทุกมือที่เห็น (ไม่เกิน 2) แยกอิสระต่อกัน — ใช้กับมินิเกมที่ต้องรู้
 //   ทั้งสองมือพร้อมกัน (เช่น "67" ที่ธรรมชาติท่าคือขยับสองมือสลับกัน)
+//   มือหลุดเฟรมสั้นๆ (< LOST_GRACE_MS = 350ms) จะไม่ทำให้ zone/progress รีเซ็ต (ดูคอมเมนต์ LOST_GRACE_MS
+//   ด้านล่าง) — กันอาการ "ชี้แล้วค้าง ไม่ติดสักที" บนเครื่องที่หลุดจับมือบ่อย (Android/ชี้ 2 นิ้ว)
 
 const MEDIAPIPE_VERSION = "1.0.1"; // ตรวจสอบแล้วว่าเป็นเวอร์ชัน stable ล่าสุดบน npm (ส.ค. 2026)
 const VISION_BUNDLE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
@@ -120,6 +122,19 @@ export function resetCalibration() {
 let currentZone = null;
 let zoneStartTs = 0;
 
+// --- Grace period กันมือ "หลุดเฟรมชั่วครู่" รีเซ็ตนาฬิกาทั้งที่ยังไม่ได้ขยับไปไหนจริง ---
+// ปัญหาที่พบจากฟีดแบ็กจริง (ก.ย. 2026): นักเรียนหลายคนรายงานว่า "ชี้แล้วค้าง ไม่ติดสักที" / "ปุ่มไม่ค่อย
+// ติด" / "กล้องไม่ค่อยตรวจจับ" — ไม่ใช่แค่โหมด 67 แต่เป็นทั้งระบบ (รวมตอบคำถามหลักด้วย) พบมากขึ้นบน Android
+// และตอนชี้ 2 นิ้ว (ความมั่นใจของโมเดลต่ำกว่าชี้ 1 นิ้วเพียวๆ) สาเหตุคือโค้ดเดิมพอ handLandmarker หลุดจับ
+// มือไปแม้แค่ 1 เฟรม (มือเบลอตอนขยับเร็ว/แสงไม่พอ/ความมั่นใจโมเดลแกว่ง) currentZone จะถูกบังคับเป็น null
+// ทันที พอมือกลับมาติดเฟรมถัดไป ระบบเห็นว่า zone เปลี่ยน (จาก null) เลยรีเซ็ต zoneStartTs ใหม่ทั้งหมด —
+// เครื่องที่หลุดเฟรมบ่อย (Android FPS ต่ำกว่า/detection แกว่งง่ายกว่า iPhone) จะโดนรีเซ็ตซ้ำๆ จนไม่มีทาง
+// นับครบ holdMs (1400ms) สักที ทั้งที่ผู้เล่นชี้ตำแหน่งเดิมนิ่งๆ อยู่ตลอด
+// วิธีแก้: ถ้าหลุดเฟรมไม่เกิน LOST_GRACE_MS ให้ถือว่า "ยังชี้ตำแหน่งเดิมต่อ" ไม่รีเซ็ตอะไรเลย จะรีเซ็ตจริง
+// ก็ต่อเมื่อหลุดต่อเนื่องเกินช่วงนี้ (แปลว่ามือหายไปจากจอจริงๆ ไม่ใช่แค่เบลอเฟรมเดียว)
+const LOST_GRACE_MS = 350;
+let lostSinceTs = null;
+
 // export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) — ตัวแอปจริงเรียกผ่าน
 // startGestureDetection เท่านั้น ไม่ได้เรียก pointToZone ตรงๆ
 export function pointToZone(mx, y) {
@@ -213,6 +228,7 @@ export async function startGestureDetection(
   lastZone = null;
   currentZone = null;
   zoneStartTs = performance.now();
+  lostSinceTs = null;
   handTrackers.clear();
   let usePose = bodySkeleton && !!poseLandmarker;
 
@@ -305,6 +321,7 @@ export async function startGestureDetection(
     };
 
     if (pointing) {
+      lostSinceTs = null; // มือกลับมาติดเฟรมแล้ว ล้างนาฬิกา "หลุดเฟรม" ทิ้ง
       const tip = pointing[8];
       const mx = 1 - tip.x; // กลับด้านให้ตรงกับภาพ mirror บนจอ (กล้องหน้า)
 
@@ -324,11 +341,25 @@ export async function startGestureDetection(
         progress: Math.min(heldMs / holdMs, 1),
         confirmed: heldMs >= holdMs,
       });
+    } else if (currentZone !== null && (lostSinceTs === null || now - lostSinceTs < LOST_GRACE_MS)) {
+      // หลุดเฟรมแต่ยังอยู่ในช่วงผ่อนผัน (ดูคอมเมนต์ที่ประกาศ LOST_GRACE_MS ด้านบน) — ถือว่ายังชี้ตำแหน่ง/โซน
+      // เดิมต่อ ไม่รีเซ็ตอะไรเลย นาฬิกาค้างเดินต่อเนื่องเหมือนไม่มีอะไรเกิดขึ้น
+      if (lostSinceTs === null) lostSinceTs = now;
+      const heldMs = now - zoneStartTs;
+      onUpdate({
+        ...common,
+        zone: currentZone,
+        point: smoothX !== null ? { x: smoothX, y: smoothY } : null,
+        progress: Math.min(heldMs / holdMs, 1),
+        confirmed: heldMs >= holdMs,
+      });
     } else {
+      // หลุดเฟรมนานเกินช่วงผ่อนผัน (หรือไม่เคยจับโซนได้เลยตั้งแต่แรก) — ถือว่ามือหายไปจากจอจริงๆ รีเซ็ตทุกอย่าง
       currentZone = null;
       smoothX = null;
       smoothY = null;
       lastZone = null; // มือหลุดเฟรม รีเซ็ต hysteresis กันค้างโซนเก่าตอนมือกลับเข้ามาที่อื่น
+      lostSinceTs = null;
       onUpdate({ ...common, zone: null, point: null, progress: 0, confirmed: false });
     }
 
@@ -352,9 +383,10 @@ export function resetZoneTracking() {
 export function resetHoldTimer() {
   currentZone = null;
   zoneStartTs = performance.now();
+  lostSinceTs = null;
 }
 
 // เฉพาะ test: อ่าน state ภายในของนาฬิกาจับเวลา ยืนยันว่า resetHoldTimer() รีเซ็ตจริง
 export function _debugGetHoldState() {
-  return { currentZone, zoneStartTs };
+  return { currentZone, zoneStartTs, lostSinceTs };
 }
