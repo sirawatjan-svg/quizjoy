@@ -106,6 +106,11 @@
           <ul id="lobby-player-list" style="list-style:none; padding:0; margin:0 0 12px;"></ul>
           <button id="start-game-btn" style="width:100%;">🚀 เริ่มเกมพร้อมกัน</button>
           <p id="lobby-status" style="color:var(--muted); font-size:0.85rem;"></p>
+          <!-- เพลงประกอบเล่นจากเครื่องครู (ต่อลำโพง/โปรเจกเตอร์หน้าห้อง) เท่านั้น — ตั้งใจไม่เล่นจาก
+               เครื่องนักเรียนแต่ละคน เพราะถ้าทุกเครื่องเล่นเพลงเดียวกันพร้อมกันในห้องเดียวกัน (หลายสิบ
+               เครื่อง ไม่ synced กันเป๊ะ) จะกลายเป็นเสียงก้องซ้อนกันฟังไม่รู้เรื่องแทน -->
+          <button id="bgm-toggle-btn" type="button" style="width:100%; margin-top:8px; background:#334155; font-size:0.85rem;">🔊 เพลงประกอบ: ปิดอยู่</button>
+          <audio id="bgm" loop preload="auto" src="../assets/audio/bgm-quiz.mp3"></audio>
         </div>
 
         <div class="panel" id="live-scores" style="display:none;">
@@ -156,8 +161,38 @@
     const lobbyPlayerListEl = document.getElementById("lobby-player-list");
     const startGameBtn = document.getElementById("start-game-btn");
     const lobbyStatusEl = document.getElementById("lobby-status");
+    const bgmToggleBtn = document.getElementById("bgm-toggle-btn");
+    const bgm = document.getElementById("bgm");
 
     let bankQuestions = [];
+
+    // เพลงประกอบ: เล่นจากเครื่องครูเครื่องเดียว (ต่อลำโพง/โปรเจกเตอร์หน้าห้อง) — ปุ่มกดเองได้เผื่อครู
+    // ไม่อยากเปิด หรืออยากเปิดก่อนเริ่มเกมจริงก็ได้ตามใจ ไม่ผูกอัตโนมัติเข้ากับปุ่มเริ่มเกมตายตัว
+    bgm.volume = 0.5;
+    bgmToggleBtn.addEventListener("click", () => {
+      if (bgm.paused) {
+        bgm.play().catch(() => {}); // เบราว์เซอร์บางตัวบล็อก autoplay — ปุ่มนี้กดเองมี user gesture แล้วเลยควรผ่าน
+        bgmToggleBtn.textContent = "🔊 เพลงประกอบ: เปิดอยู่";
+      } else {
+        bgm.pause();
+        bgmToggleBtn.textContent = "🔊 เพลงประกอบ: ปิดอยู่";
+      }
+    });
+
+    // ค่อยๆ หรี่เสียงลงตอนประกาศผล (โพเดียม) แทนตัดเสียงทันที ฟังดูนุ่มนวลกว่า แล้วหยุดเล่นจริงตอนเสียงเป็น 0
+    function fadeOutBgm() {
+      if (bgm.paused) return;
+      const fadeInterval = setInterval(() => {
+        bgm.volume = Math.max(0, bgm.volume - 0.05);
+        if (bgm.volume <= 0) {
+          bgm.pause();
+          bgm.volume = 0.5; // คืนค่าเดิมไว้เผื่อครูกดเปิดใหม่รอบหน้า
+          bgmToggleBtn.textContent = "🔊 เพลงประกอบ: ปิดอยู่";
+          clearInterval(fadeInterval);
+        }
+      }, 150);
+    }
+
     // สถานะสำหรับ "เริ่มเกมพร้อมกัน" + จับเวลาเพื่อสลับเป็นโหมดโพเดียมอัตโนมัติตอนหมดเวลา
     let durationMinutesGlobal = 5;
     let gameEndsAtMs = null; // คำนวณจาก startedAt (serverTimestamp ที่ commit จริง) ไม่ใช่นาฬิกาเครื่องครูเอง
@@ -260,6 +295,7 @@
           gameEndedFlag = true;
           scoresHeading.textContent = "🏆 ผลการแข่งขัน (จบเกมแล้ว)";
           renderScores();
+          fadeOutBgm();
           clearInterval(podiumInterval);
         }, 1000);
       });
