@@ -457,12 +457,11 @@ export function runFishSwim(ctx) {
 
   resetCornerLabels(corners); // เกมนี้ไม่ใช้กล่อง 4 มุมแล้ว เคลียร์ label ค้างจากเกมก่อนหน้ากันสับสน
   // ซ่อนกล่องคำตอบ 4 มุมไปเลยทั้งเกม (ว่างเปล่าอยู่แล้วแต่ .answer-corner ยังมีพื้นหลังสีทึบของตัวเอง โชว์
-  // เป็นกรอบสี่เหลี่ยมค้างอยู่ตลอด ครูรายงานว่าเกะกะ/บังตาเวลาไล่จับปลาที่ว่ายผ่านบริเวณนั้น) — opacity แทน
-  // display:none เพราะ .answer-corner มี transition อยู่แล้ว จะได้จาง/โผล่กลับมานุ่มนวลไม่กระตุก
-  Object.values(corners).forEach((el) => {
-    el.style.opacity = "0";
-    el.style.pointerEvents = "none";
-  });
+  // เป็นกรอบสี่เหลี่ยมค้างอยู่ตลอด ครูรายงานว่าเกะกะ/บังตาเวลาไล่จับปลาที่ว่ายผ่านบริเวณนั้น) — v2: ต้องใช้
+  // class .fish-game-hidden (มี !important ใน style.css) ไม่ใช่ el.style.opacity ตรงๆ แบบรอบแรก เพราะกล่อง
+  // เพิ่งผ่านแอนิเมชัน .reveal-in (fill-mode:forwards จากตอนคำถามก่อนหน้าโผล่มา) ซึ่งชนะ inline style
+  // normal-priority เสมอตาม CSS cascade — ครูส่งภาพจอมายืนยันว่ากล่องยังโชว์เต็มๆ ทั้งที่ตั้ง opacity ให้แล้ว
+  Object.values(corners).forEach((el) => el.classList.add("fish-game-hidden"));
 
   const startTime = performance.now();
   let fishes = []; // { el, x, y, vx, vy, catchStartTs }
@@ -515,10 +514,8 @@ export function runFishSwim(ctx) {
     clearTimeout(endTimeout);
     fishes.forEach((f) => f.el.remove());
     fishes = [];
-    Object.values(corners).forEach((el) => {
-      el.style.opacity = "";
-      el.style.pointerEvents = "";
-    });
+    resetCornerLabels(corners);
+    Object.values(corners).forEach((el) => el.classList.remove("fish-game-hidden"));
     ctx.setZoneHandler(null);
     ctx.onCleanupExtra?.();
   }

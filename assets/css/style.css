@@ -577,6 +577,16 @@ button:disabled {
   filter: drop-shadow(0 0 10px #4ade80) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
 
+/* ใช้ปิดกล่องคำตอบ 4 มุมระหว่างเกม "ตกปลา" — ต้องเป็น class + !important เท่านั้น ตั้ง el.style.opacity
+   ตรงๆ จาก JS เฉยๆ ไม่พอ เพราะกล่องคำตอบเพิ่งผ่านแอนิเมชัน .reveal-in (corner-pop-in, fill-mode:forwards)
+   ตอนคำถามก่อนหน้าโผล่มา — ตาม CSS cascade แอนิเมชันที่รันอยู่/ยึด forwards ไว้ชนะ inline style แบบ normal
+   priority เสมอ (ชนะแค่ !important เท่านั้น) เป็นสาเหตุจริงที่ทำให้กล่อง 4 มุมยังโชว์เต็มๆ ทั้งที่ตั้ง
+   opacity:"0" ให้แล้วในโค้ด (ครูส่งภาพหน้าจอมายืนยันเจอปัญหานี้จริงบนเครื่อง) */
+.answer-corner.fish-game-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .hold-progress {
   position: absolute;
   bottom: 24px;
