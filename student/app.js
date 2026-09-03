@@ -8,6 +8,8 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
+  increment,
   onSnapshot,
   serverTimestamp,
   arrayUnion,
@@ -430,6 +432,41 @@ const BONUS_DEMOS = {
   },
 };
 
+// --- Steal Bonus ("ขโมยโบนัส") support: bonus-engine.js ไม่รู้จัก Firestore เลยตั้งใจ (แยก concern เดิม —
+// เกมอื่นทุกเกมเป็นแค่ UI/logic ล้วนๆ ไม่แตะ network) เกมนี้เลยรับฟังก์ชัน fetchTargets/stealFrom ผ่าน ctx
+// แทน ให้หน้านี้เป็นคนคุย Firestore จริงๆ ทั้งหมด ---
+
+// ดึงผู้เล่นคะแนนโบนัสสูงสุด 4 คน (ไม่รวมตัวเอง, ต้องมีคะแนนโบนัส > 0 ถึงจะเป็นเป้าหมายได้ — ขโมยจากคนที่ยังไม่
+// มีอะไรให้ขโมยไม่มีประโยชน์) ใช้ full-fetch-แล้ว sort ฝั่ง client แบบเดียวกับ showRankAndPodium() ด้านล่าง
+// (ห้องเรียนขนาดนี้ผู้เล่นไม่กี่สิบคน ไม่คุ้มที่จะเพิ่ม query/orderBy/limit ให้ซับซ้อนขึ้นเปล่าๆ)
+async function fetchStealTargets() {
+  const snap = await getDocs(collection(db, "sessions", room, "results"));
+  const all = [];
+  snap.forEach((d) => {
+    if (d.id === studentId) return; // ขโมยตัวเองไม่ได้
+    const data = d.data();
+    const bonus = data.bonusScore ?? 0;
+    if (bonus > 0) all.push({ id: d.id, name: data.name ?? "?", bonusScore: bonus });
+  });
+  all.sort((a, b) => b.bonusScore - a.bonusScore);
+  return all.slice(0, 4);
+}
+
+// หักคะแนนโบนัสจากเป้าหมายจริงใน Firestore (คะแนนของตัวเองที่ได้จากการขโมย ผ่าน onScore ปกติแยกต่างหากอยู่
+// แล้ว ไม่เกี่ยวกับฟังก์ชันนี้) ใช้ increment(-amount) แทน read-then-write ธรรมดา กันปัญหา race condition ถ้า
+// มีคนขโมยเป้าหมายเดียวกันพร้อมกันพอดี (ยังมีโอกาสน้อยมากที่ยอดจะติดลบถ้าจังหวะตรงกันเป๊ะ — Firestore
+// security rules บังคับ bonusScore >= 0 อยู่แล้ว ถ้าเกิดขึ้นจริง Firestore จะปฏิเสธ write นั้นเอง ไม่ทำให้
+// คะแนนติดลบได้ แค่ครั้งนั้นขโมยไม่สำเร็จเงียบๆ ซึ่งเป็นเคสหายากมากและไม่ร้ายแรงพอจะต้อง handle ซับซ้อนกว่านี้)
+async function stealBonusPoints(targetId, amount) {
+  try {
+    await updateDoc(doc(db, "sessions", room, "results", targetId), {
+      bonusScore: increment(-amount),
+    });
+  } catch (err) {
+    console.error("[quizjoy] หักคะแนนเป้าหมายไม่สำเร็จ (ผู้เล่นได้คะแนนของตัวเองไปแล้วตามปกติ):", err);
+  }
+}
+
 function triggerBonusChallenge() {
   mode = "bonus";
   clearRevealClasses();
@@ -487,6 +524,10 @@ function triggerBonusChallenge() {
         bonusZoneHandler = null;
         if (Date.now() < gameEndsAt) nextQuestion();
       },
+      // ใช้เฉพาะเกม "ขโมยโบนัส" — เกมอื่นไม่เรียกสองตัวนี้เลย (ดูคอมเมนต์เหนือ fetchStealTargets ด้านบนว่า
+      // ทำไมแยก Firestore ออกมาไว้ที่หน้านี้แทนที่จะให้ bonus-engine.js คุยเอง)
+      fetchTargets: fetchStealTargets,
+      stealFrom: stealBonusPoints,
     });
   }, bannerDurationMs);
 }

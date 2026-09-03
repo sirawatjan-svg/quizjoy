@@ -20,6 +20,8 @@
     <button id="btn-bounce">Test Hand Bounce (switch sides freely, no beat)</button>
     <button id="btn-dance">Test Hand Dance Follow (perfect play)</button>
     <button id="btn-brainrot">Test Fish Swim (sweep point across play area)</button>
+    <button id="btn-steal">Test Steal Bonus (hold on one target, mocked Firestore)</button>
+    <button id="btn-steal-empty">Test Steal Bonus (no targets — graceful skip)</button>
     <button id="btn-all">Run All</button>
   </div>
   <div id="log">พร้อมทดสอบ...</div>
@@ -37,6 +39,7 @@
       runHandBounce,
       runHandDanceFollow,
       runFishSwim,
+      runStealBonus,
     } from "../assets/js/bonus-engine.js";
 
     const logEl = document.getElementById("log");
@@ -172,11 +175,87 @@
       }, 50);
     }
 
+    // Steal Bonus ใช้ ctx เพิ่ม 2 ตัวที่ makeCtx() ปกติไม่มี (fetchTargets/stealFrom แตะ Firestore ในแอปจริง —
+    // ที่นี่ mock ทั้งคู่แทน ไม่แตะเน็ตเวิร์กจริงเลย) เลยประกอบ ctx เองแยกจาก makeCtx() ตัวเดิม
+    function makeStealCtx(name, fakeTargets) {
+      let zoneHandler = null;
+      let totalScore = 0;
+      const stealCalls = [];
+      const ctx = {
+        corners,
+        stage,
+        setZoneHandler: (fn) => {
+          zoneHandler = fn;
+        },
+        onScore: (delta) => {
+          totalScore += delta;
+          log(`  [score] +${delta} (รวม ${totalScore})`);
+        },
+        onEnd: () => {
+          log(`✅ [${name}] จบเกม — คะแนนรวม ${totalScore}`, "ok");
+        },
+        fetchTargets: () => Promise.resolve(fakeTargets),
+        stealFrom: (targetId, amount) => {
+          stealCalls.push({ targetId, amount });
+          log(`  [stealFrom mock] หัก ${amount} จาก ${targetId} (ไม่แตะ Firestore จริง)`);
+          return Promise.resolve();
+        },
+      };
+      return {
+        ctx,
+        fireZone: (zone) => zoneHandler?.({ zone, point: zone ? { x: 0.5, y: 0.5 } : null }),
+        getScore: () => totalScore,
+        getStealCalls: () => stealCalls,
+      };
+    }
+
+    async function testStealBonus() {
+      log(
+        "\n=== Steal Bonus: mock เป้าหมาย 3 คน (bonusScore 40/120/300) ชี้ค้าง tl รัวๆ ทุก 100ms จนครบ\n" +
+          "     HOLD_MS (1400ms) — คาดว่าจะ steal จากเป้าหมายที่ผูกกับ tl (คนแรกในลิสต์) แล้ว onEnd ทันที ==="
+      );
+      const fakeTargets = [
+        { id: "fake-a", name: "เด็กชายทดสอบ A", bonusScore: 40 },
+        { id: "fake-b", name: "เด็กหญิงทดสอบ B", bonusScore: 120 },
+        { id: "fake-c", name: "เด็กชายทดสอบ C", bonusScore: 300 },
+      ];
+      const { ctx, fireZone, getScore, getStealCalls } = makeStealCtx("Steal Bonus", fakeTargets);
+      runStealBonus(ctx);
+      await wait(100); // รอ fetchTargets() (mock, resolve เร็วแต่ยัง async หนึ่ง microtask) ก่อนเริ่มชี้
+      const start = Date.now();
+      const interval = setInterval(() => {
+        if (Date.now() - start > 2000) {
+          clearInterval(interval);
+          const calls = getStealCalls();
+          const ok =
+            getScore() > 0 &&
+            calls.length === 1 &&
+            calls[0].targetId === "fake-a" &&
+            calls[0].amount === getScore();
+          log(
+            ok
+              ? `  ✅ ถูกต้อง: steal จาก fake-a (คนแรก=โซน tl) 1 ครั้งเท่านั้น คะแนนตรงกับที่ stealFrom หักไป (${getScore()})`
+              : `  ⚠️ ผลไม่ตรงคาด: score=${getScore()}, stealCalls=${JSON.stringify(calls)} (ลองรันซ้ำ อาจแค่จังหวะ interval ไม่ลงตัว)`
+          );
+          return;
+        }
+        fireZone("tl");
+      }, 100);
+    }
+
+    async function testStealBonusEmpty() {
+      log("\n=== Steal Bonus (ไม่มีเป้าหมายเลย): fetchTargets() คืน [] — ควรจบเกมนุ่มนวล ได้ participation 20 แต้ม ===");
+      const { ctx } = makeStealCtx("Steal Bonus (empty)", []);
+      runStealBonus(ctx);
+    }
+
     document.getElementById("btn-skibidi").onclick = testSkibidi;
     document.getElementById("btn-sky").onclick = testReachSky;
     document.getElementById("btn-bounce").onclick = testHandBounce;
     document.getElementById("btn-dance").onclick = testHandDanceFollow;
     document.getElementById("btn-brainrot").onclick = testFishSwim;
+    document.getElementById("btn-steal").onclick = testStealBonus;
+    document.getElementById("btn-steal-empty").onclick = testStealBonusEmpty;
     document.getElementById("btn-all").onclick = async () => {
       await testSkibidi();
       await wait(6000);
@@ -187,6 +266,10 @@
       await testHandDanceFollow();
       await wait(9000);
       await testFishSwim();
+      await wait(16000);
+      await testStealBonus();
+      await wait(2500);
+      await testStealBonusEmpty();
     };
   </script>
 </body>

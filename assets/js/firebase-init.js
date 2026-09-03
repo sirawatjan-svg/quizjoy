@@ -17,6 +17,7 @@ import {
   orderBy,
   limit,
   arrayUnion,
+  increment,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getAuth,
@@ -47,6 +48,7 @@ export {
   orderBy,
   limit,
   arrayUnion,
+  increment,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,

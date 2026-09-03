@@ -20,6 +20,10 @@ export const BONUS_GAMES = [
   { id: "hand-bounce", name: "จังหวะมือ 6-7", emoji: "✋", ready: false },
   { id: "hand-dance-follow", name: "ตามท่ามือ", emoji: "🕺", ready: false },
   { id: "brainrot-swat", name: "ตกปลา!", emoji: "🎣", ready: true },
+  // v5: เพิ่ม "ขโมยโบนัส" (แนวคิดครู อ้างอิง Blooket) — โชว์ผู้เล่นคะแนนโบนัสสูงสุด 4 คน เลือกขโมย 1 คนด้วย
+  // กลไก "ชี้ค้าง 1 ใน 4 มุม" เดียวกับตอบคำถามหลักเป๊ะๆ (ระบบที่แม่นที่สุดในแอป — ไม่ใช่สลับเป้ารัวๆ ต่อเนื่อง
+  // แบบ 67 ที่พักไปแล้ว) ตอนนี้มี 2 เกมพร้อมเล่นสลับกัน (ตกปลา + ขโมยโบนัส) ตามที่คุยกันไว้เรื่องความหลากหลาย
+  { id: "steal-bonus", name: "ขโมยโบนัส!", emoji: "💰", ready: true },
 ];
 
 let bag = [];
@@ -608,10 +612,140 @@ export function runFishSwim(ctx) {
   };
 }
 
+// ============ เกม 6: ขโมยโบนัส (Blooket-inspired ตามไอเดียครู) ============
+// ctx เพิ่ม 2 ตัวเฉพาะเกมนี้ (เกมอื่นไม่ใช้เลย): fetchTargets() -> Promise<[{id,name,bonusScore}]> สูงสุด
+// 4 คน, stealFrom(targetId, amount) -> หักคะแนนเป้าหมายจริงใน Firestore — ทั้งสองตัวทำที่ student/app.js
+// เพราะไฟล์นี้ตั้งใจไม่แตะ Firestore เลย (แยก concern: ไฟล์นี้ = UI/logic เกมล้วนๆ, หน้าเรียก = network)
+//
+// ใช้กลไก "ชี้ค้าง 1 ใน 4 มุม" ค้าง HOLD_MS เดียวกับตอบคำถามหลักเป๊ะๆ — เลือกแบบนี้เพราะโดยธรรมชาติ "เลือกจะ
+// ขโมยใครใน 4 คน" คือการตัดสินใจ "1 ใน 4" ครั้งเดียว เหมือนตอบคำถาม ไม่ใช่ต้องสลับเป้าหมายรัวๆ ต่อเนื่องแบบ
+// 67 ที่พักไปแล้ว (ดูคอมเมนต์ยาวตอนประกาศ BONUS_GAMES ด้านบนสุดของไฟล์) — ไม่ได้ใช้ progress/confirmed จาก
+// gesture-detection.js ตรงๆ เพราะ frame ที่ส่งมาโหมด bonus มีแค่ {zone, point, hands} เท่านั้น (ดู onZoneUpdate
+// ใน student/app.js) เลยทำนาฬิกาค้างของตัวเองแยกในเกม เหมือนที่ runHandDanceFollow ทำอยู่แล้ว
+export function runStealBonus(ctx) {
+  const { corners, onScore, onEnd, fetchTargets, stealFrom } = ctx;
+  const zones = ["tl", "tr", "bl", "br"];
+  const DECIDE_MS = 12000; // เวลาตัดสินใจทั้งรอบ นานกว่าคำถามปกตินิดหน่อย เพราะต้องอ่านชื่อ/คะแนนคนอื่นก่อน
+  const HOLD_MS = 1400; // เท่ากับตอบคำถามหลักเป๊ะๆ
+
+  let targets = [null, null, null, null]; // เรียงตำแหน่งตาม zones ด้านบน
+  let decided = false;
+  let decideTimeout = null;
+  let currentZone = null;
+  let zoneEnterTs = 0;
+
+  resetCornerLabels(corners, { tl: "⏳", tr: "⏳", bl: "⏳", br: "⏳" });
+
+  function cleanup() {
+    clearTimeout(decideTimeout);
+    ctx.setZoneHandler(null);
+    resetCornerLabels(corners);
+    ctx.onCleanupExtra?.();
+  }
+
+  function finish() {
+    if (decided) return;
+    decided = true;
+    cleanup();
+    onEnd();
+  }
+
+  // วาดชื่อ/คะแนนเป้าหมายด้วย DOM API + textContent (ไม่ใช้ innerHTML ต่อ string ชื่อตรงๆ) — ชื่อนี้มาจาก
+  // ผู้เล่นคนอื่นพิมพ์เอง (แอปนี้ไม่มีระบบ auth ฝั่งนักเรียน ใครจะพิมพ์อะไรมาเป็นชื่อก็ได้) ถ้าต่อ string
+  // แล้วใส่ผ่าน innerHTML ตรงๆ จะเปิดช่องให้แอบใส่ HTML/script ผ่านชื่อได้ (stored XSS) ตั้งใจกันไว้ตั้งแต่
+  // เขียนเกมนี้ใหม่ แม้ว่าโค้ดจุดอื่นในโปรเจกต์ (หน้าโพเดียม) จะยังไม่ได้กันแบบนี้ก็ตาม
+  function renderTargets(list) {
+    targets = zones.map((_, i) => list[i] ?? null);
+    zones.forEach((zone, i) => {
+      const el = corners[zone];
+      const t = targets[i];
+      el.innerHTML = "";
+      el.classList.toggle("target", !!t);
+      if (!t) return;
+      const wrap = document.createElement("div");
+      const nameLine = document.createElement("div");
+      nameLine.style.fontWeight = "800";
+      nameLine.textContent = t.name;
+      const scoreLine = document.createElement("div");
+      scoreLine.style.cssText = "font-size:0.75em; opacity:0.85; margin-top:2px;";
+      scoreLine.textContent = `🎁 ${t.bonusScore}`;
+      wrap.appendChild(nameLine);
+      wrap.appendChild(scoreLine);
+      el.appendChild(wrap);
+    });
+  }
+
+  function steal(zone) {
+    const t = targets[zones.indexOf(zone)];
+    if (!t || decided) return;
+    decided = true;
+    clearTimeout(decideTimeout);
+    // สุ่มขโมย 25-50% ของคะแนนที่เป้าหมายมีตอนนี้ (ไม่มีวันขโมยเกินที่เขามีจริง กันคะแนนติดลบตั้งแต่ต้นทาง
+    // อยู่แล้ว ไม่ต้องรอ Firestore rules ปฏิเสธ) อย่างน้อย 10 แต้มกันได้น้อยจนรู้สึกไม่คุ้มเสี่ยง
+    const amount = Math.max(10, Math.round(t.bonusScore * (0.25 + Math.random() * 0.25)));
+    corners[zone].classList.add("correct");
+    onScore(amount);
+    stealFrom(t.id, amount);
+    setTimeout(() => {
+      cleanup();
+      onEnd();
+    }, 700); // หน่วงนิดให้เห็น feedback สีเขียวก่อนตัดกลับคำถาม เหมือน pattern ตอบคำถามหลัก
+  }
+
+  ctx.setZoneHandler(({ zone }) => {
+    if (decided || !zone || !targets[zones.indexOf(zone)]) {
+      // ชี้โซนว่าง (ไม่มีเป้าหมายตรงนั้น) หรือหลุดมือ — เคลียร์ไฮไลต์ "กำลังชี้อยู่" ทิ้ง ไม่นับเป็นการค้าง
+      if (currentZone) {
+        corners[currentZone].classList.remove("active");
+        currentZone = null;
+      }
+      return;
+    }
+    if (zone !== currentZone) {
+      if (currentZone) corners[currentZone].classList.remove("active");
+      currentZone = zone;
+      corners[zone].classList.add("active");
+      zoneEnterTs = performance.now();
+    }
+    if (performance.now() - zoneEnterTs >= HOLD_MS) steal(zone);
+  });
+
+  // tap fallback: แตะตรงคนที่อยากขโมยได้ทันที ไม่ต้องค้าง (เหมือนเกมอื่นทุกเกม)
+  const tapHandlers = {};
+  zones.forEach((zone) => {
+    const handler = () => steal(zone);
+    tapHandlers[zone] = handler;
+    corners[zone].addEventListener("click", handler);
+  });
+  ctx.onCleanupExtra = () => {
+    zones.forEach((zone) => corners[zone].removeEventListener("click", tapHandlers[zone]));
+  };
+
+  // โหลดรายชื่อเป้าหมายก่อนเริ่มนับเวลาตัดสินใจจริง กันเวลารอบไปเสียกับการโหลดข้อมูลเปล่าๆ
+  fetchTargets()
+    .then((list) => {
+      if (decided) return; // เผื่อ cleanup ไปแล้วก่อนโหลดเสร็จ (เช่นเวลาหมดพอดี/เปลี่ยนโหมดกลางทาง)
+      if (list.length === 0) {
+        // ไม่มีใครให้ขโมยเลย (เล่นคนเดียว/ทุกคนยังไม่มีคะแนนโบนัสเลย) — จบแบบนุ่มนวล ไม่ตัดคะแนนใคร ให้
+        // คะแนนความพยายามเล็กน้อยเหมือน Reach for Sky ตอนไม่มีใครทำสำเร็จ กันความรู้สึก "ได้ 0 เฉยๆ งงว่าทำไม"
+        onScore(20);
+        finish();
+        return;
+      }
+      renderTargets(list);
+      decideTimeout = setTimeout(finish, DECIDE_MS);
+    })
+    .catch((err) => {
+      console.error("[bonus-engine] โหลดรายชื่อเป้าหมายขโมยโบนัสไม่สำเร็จ:", err);
+      finish(); // โหลดพลาด (เช่นเน็ตหลุดจังหวะนั้นพอดี) จบเกมแบบนุ่มนวล ไม่ปล่อยให้ค้าง
+    });
+}
+
 export const BONUS_RUNNERS = {
   "skibidi-dodge": runSkibidiDodge,
   "reach-sky": runReachForSky,
   "hand-bounce": runHandBounce,
   "hand-dance-follow": runHandDanceFollow,
   "brainrot-swat": runFishSwim,
+  "steal-bonus": runStealBonus,
 };
