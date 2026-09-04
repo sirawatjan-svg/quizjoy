@@ -476,11 +476,21 @@ async function stealBonusPoints(targetId, amount) {
 // โชว์ popup กลางจอชั่วครู่ตอนถูกขโมยคะแนน (ตามที่ครูขอ "อยากให้มี pop up กลางจอ ... จะได้รู้ว่าใครขโมยไป")
 // pointer-events:none กันไม่ให้บังการเล่นจริง (แตะทะลุได้ปกติ) หายไปเองหลัง 2.8 วิ ไม่ต้องกดปิด
 function showStealAlert(thiefName, amount) {
+  // v2: ครูรายงานว่า popup เดิมเล็กไป มองไม่ชัด — แยกเป็นไอคอนใหญ่ยักษ์ + ข้อความ (ดู .steal-alert ใน
+  // style.css) แทนบรรทัดเดียวเดิม ใช้ textContent แยกสองก้อนเหมือนเดิม (ไม่ใช่ innerHTML) เพราะ thiefName
+  // มาจากชื่อที่ผู้เล่นคนอื่นพิมพ์เอง ยังต้องกัน XSS เหมือนจุดอื่นที่เพิ่งเขียนใหม่ในโปรเจกต์นี้
   const el = document.createElement("div");
   el.className = "steal-alert";
-  el.textContent = `😱 ${thiefName} ขโมยคะแนนคุณไป ${amount} คะแนน!`;
+  const icon = document.createElement("div");
+  icon.className = "steal-alert-icon";
+  icon.textContent = "😱💸";
+  const text = document.createElement("div");
+  text.className = "steal-alert-text";
+  text.textContent = `${thiefName} ขโมยคะแนนคุณไป ${amount} คะแนน!`;
+  el.appendChild(icon);
+  el.appendChild(text);
   quizStage.appendChild(el);
-  setTimeout(() => el.remove(), 2800);
+  setTimeout(() => el.remove(), 3200);
 }
 
 // ฟังเอกสารคะแนนของ "ตัวเอง" (ไม่ใช่ของคนอื่น) — ตอน lastStolenAt เปลี่ยนเป็นค่าใหม่แปลว่าเพิ่งถูกคนอื่น

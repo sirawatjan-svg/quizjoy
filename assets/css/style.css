@@ -602,30 +602,42 @@ button:disabled {
   pointer-events: none !important;
 }
 
-/* Popup กลางจอตอนถูกขโมยคะแนน (เกม "ขโมยโบนัส") — เด้งเข้ามาแล้วหายเองหลัง 2.8 วิ ไม่ต้องกดปิด
-   pointer-events:none กันไม่ให้บังการเล่นจริงระหว่างที่ยังค้างอยู่บนจอ */
+/* Popup กลางจอตอนถูกขโมยคะแนน (เกม "ขโมยโบนัส") — เด้งเข้ามาแล้วหายเองหลัง 3.2 วิ ไม่ต้องกดปิด
+   pointer-events:none กันไม่ให้บังการเล่นจริงระหว่างที่ยังค้างอยู่บนจอ
+   v2: ครูรายงานว่า "เล็กไป เด็กมองไม่เห็นชัด" — ขยายใหญ่ขึ้นทั้งกล่องและตัวหนังสือ (เทียบเท่า/ใหญ่กว่า
+   bonus-banner ที่โผล่ตอนเริ่มมินิเกม ซึ่งเป็นจุดที่ตั้งใจให้เด่นที่สุดในแอปอยู่แล้ว) แยกเป็น 2 บรรทัด
+   (ไอคอนใหญ่ยักษ์ + ข้อความ) แทนบรรทัดเดียวเดิม ให้สะดุดตากว่าเดิมมาก */
 .steal-alert {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 40;
-  max-width: 82%;
+  max-width: 88%;
   text-align: center;
-  padding: 18px 26px;
+  padding: 28px 36px;
   border-radius: var(--radius-lg);
   background: linear-gradient(145deg, #fb923c, #dc2626);
   color: white;
-  font-weight: 800;
-  font-size: 1.05rem;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.55);
   pointer-events: none;
-  animation: steal-alert-pop 2.8s ease forwards;
+  animation: steal-alert-pop 3.2s ease forwards;
+}
+.steal-alert .steal-alert-icon {
+  font-size: 3.6rem;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.steal-alert .steal-alert-text {
+  font-weight: 800;
+  font-size: 1.5rem;
+  line-height: 1.35;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 @keyframes steal-alert-pop {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
-  12% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
-  18% { transform: translate(-50%, -50%) scale(1); }
-  82% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  10% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  16% { transform: translate(-50%, -50%) scale(1); }
+  85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
 }
 
