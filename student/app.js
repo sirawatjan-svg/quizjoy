@@ -512,7 +512,7 @@ onSnapshot(resultsRef, (snap) => {
   }
 });
 
-function triggerBonusChallenge() {
+async function triggerBonusChallenge() {
   mode = "bonus";
   clearRevealClasses();
   clearTimeout(prepTimeout);
@@ -527,7 +527,20 @@ function triggerBonusChallenge() {
   questionText.textContent = "";
   questionLabel.textContent = "🎁 ภารกิจพิเศษ";
 
-  const game = nextBonusGame();
+  let game = nextBonusGame();
+  // "ขโมยโบนัส" ขึ้นมาไม่มีประโยชน์เลยถ้ายังไม่มีใครมีคะแนนโบนัสสักคน (เช่นรอบภารกิจพิเศษรอบแรกสุดของห้อง
+  // ก่อนจะมีใครเล่นตกปลา/เก็บเหรียญสำเร็จเลยสักครั้ง) — ครูรายงานว่าเกมนี้โผล่มาแบบนั้นแล้วรู้สึกเสียเวลาเปล่า
+  // (จบด้วย participation 20 แต้มทันที ไม่มีอะไรให้ตื่นเต้น) เช็คก่อนว่ามีเป้าหมายจริงไหม ถ้าไม่มีให้สุ่มเกม
+  // ถัดไปจากถุงเดิมแทน — วนได้อย่างปลอดภัยไม่มีวันติดลูปไม่จบ เพราะถุงสุ่มของ nextBonusGame() มีเกมที่ไม่ต้อง
+  // พึ่งข้อมูลนี้เลยอยู่เสมอ (ตกปลา/เก็บเหรียญ) พอดึงเจอเกมอื่นที่ไม่ใช่ขโมยโบนัส เงื่อนไขจะเป็นเท็จทันที
+  if (game.id === "steal-bonus") {
+    let targets = await fetchStealTargets();
+    while (targets.length === 0 && game.id === "steal-bonus") {
+      game = nextBonusGame();
+      targets = game.id === "steal-bonus" ? await fetchStealTargets() : [];
+    }
+  }
+
   bonusEmoji.textContent = game.emoji;
   bonusTitle.textContent = game.name;
   bonusSub.textContent = "ภารกิจพิเศษ! เตรียมตัว...";
