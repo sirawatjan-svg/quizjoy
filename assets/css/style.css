@@ -577,14 +577,56 @@ button:disabled {
   filter: drop-shadow(0 0 10px #4ade80) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
 
+/* เหรียญกระโดดขึ้น-ตกลง (เกม "เก็บเหรียญ") — pattern เดียวกับ .fish-swim เป๊ะๆ (left/top % จาก JS ทุกเฟรม,
+   ไม่ใช้ transition กับตำแหน่ง) แค่ไม่มี .catching เพราะเกมนี้จับทันทีที่แตะโดน ไม่ต้องค้าง (เหรียญอยู่บนจอ
+   สั้นกว่าปลามาก ค้างไม่ทันไหว) */
+.coin-pop {
+  position: absolute;
+  font-size: 3.2rem;
+  line-height: 1;
+  z-index: 5;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* ใช้ปิดกล่องคำตอบ 4 มุมระหว่างเกม "ตกปลา" — ต้องเป็น class + !important เท่านั้น ตั้ง el.style.opacity
    ตรงๆ จาก JS เฉยๆ ไม่พอ เพราะกล่องคำตอบเพิ่งผ่านแอนิเมชัน .reveal-in (corner-pop-in, fill-mode:forwards)
    ตอนคำถามก่อนหน้าโผล่มา — ตาม CSS cascade แอนิเมชันที่รันอยู่/ยึด forwards ไว้ชนะ inline style แบบ normal
    priority เสมอ (ชนะแค่ !important เท่านั้น) เป็นสาเหตุจริงที่ทำให้กล่อง 4 มุมยังโชว์เต็มๆ ทั้งที่ตั้ง
    opacity:"0" ให้แล้วในโค้ด (ครูส่งภาพหน้าจอมายืนยันเจอปัญหานี้จริงบนเครื่อง) */
-.answer-corner.fish-game-hidden {
+.answer-corner.bonus-corners-hidden {
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+/* Popup กลางจอตอนถูกขโมยคะแนน (เกม "ขโมยโบนัส") — เด้งเข้ามาแล้วหายเองหลัง 2.8 วิ ไม่ต้องกดปิด
+   pointer-events:none กันไม่ให้บังการเล่นจริงระหว่างที่ยังค้างอยู่บนจอ */
+.steal-alert {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 40;
+  max-width: 82%;
+  text-align: center;
+  padding: 18px 26px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, #fb923c, #dc2626);
+  color: white;
+  font-weight: 800;
+  font-size: 1.05rem;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  animation: steal-alert-pop 2.8s ease forwards;
+}
+@keyframes steal-alert-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  18% { transform: translate(-50%, -50%) scale(1); }
+  82% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
 }
 
 .hold-progress {

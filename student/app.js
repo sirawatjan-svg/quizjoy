@@ -457,15 +457,50 @@ async function fetchStealTargets() {
 // มีคนขโมยเป้าหมายเดียวกันพร้อมกันพอดี (ยังมีโอกาสน้อยมากที่ยอดจะติดลบถ้าจังหวะตรงกันเป๊ะ — Firestore
 // security rules บังคับ bonusScore >= 0 อยู่แล้ว ถ้าเกิดขึ้นจริง Firestore จะปฏิเสธ write นั้นเอง ไม่ทำให้
 // คะแนนติดลบได้ แค่ครั้งนั้นขโมยไม่สำเร็จเงียบๆ ซึ่งเป็นเคสหายากมากและไม่ร้ายแรงพอจะต้อง handle ซับซ้อนกว่านี้)
+// พ่วง lastStolenBy/lastStolenAmount/lastStolenAt ไปกับ write เดียวกันนี้เลย (ไม่แยก write ต่างหาก กันเคส
+// write หนึ่งสำเร็จอีก write หนึ่งพลาด) — เป้าหมายฟังการเปลี่ยนแปลง 3 ฟิลด์นี้ด้วย onSnapshot ของตัวเอง
+// (ดู watchForStealAlerts ด้านล่าง) เพื่อโชว์ popup กลางจอทันทีว่าใครขโมยไปเท่าไหร่ ตามที่ครูขอ
 async function stealBonusPoints(targetId, amount) {
   try {
     await updateDoc(doc(db, "sessions", room, "results", targetId), {
       bonusScore: increment(-amount),
+      lastStolenBy: studentName,
+      lastStolenAmount: amount,
+      lastStolenAt: serverTimestamp(),
     });
   } catch (err) {
     console.error("[quizjoy] หักคะแนนเป้าหมายไม่สำเร็จ (ผู้เล่นได้คะแนนของตัวเองไปแล้วตามปกติ):", err);
   }
 }
+
+// โชว์ popup กลางจอชั่วครู่ตอนถูกขโมยคะแนน (ตามที่ครูขอ "อยากให้มี pop up กลางจอ ... จะได้รู้ว่าใครขโมยไป")
+// pointer-events:none กันไม่ให้บังการเล่นจริง (แตะทะลุได้ปกติ) หายไปเองหลัง 2.8 วิ ไม่ต้องกดปิด
+function showStealAlert(thiefName, amount) {
+  const el = document.createElement("div");
+  el.className = "steal-alert";
+  el.textContent = `😱 ${thiefName} ขโมยคะแนนคุณไป ${amount} คะแนน!`;
+  quizStage.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+// ฟังเอกสารคะแนนของ "ตัวเอง" (ไม่ใช่ของคนอื่น) — ตอน lastStolenAt เปลี่ยนเป็นค่าใหม่แปลว่าเพิ่งถูกคนอื่น
+// ขโมยคะแนนไปจริงๆ ตอนนี้ (เขียนพร้อม stealBonusPoints() ของฝั่งคนขโมย) ไม่ว่าตัวเองตอนนั้นจะอยู่โหมดคำถาม
+// หลักหรือกำลังเล่นบอนัสของตัวเองอยู่ก็ตาม — ตั้งใจเมิน snapshot แรกที่ได้ตอนเปิดหน้า (อาจมีค่าเก่าค้างจาก
+// รอบก่อนของ session เดียวกัน ถ้าไม่กันจุดนี้จะเห็น popup ค้างเก่าโผล่มาเองตอนเพิ่งเข้าเกม ทั้งที่ไม่มีใคร
+// เพิ่งขโมยอะไรจริงๆ) — เริ่มฟังตั้งแต่โหลดหน้าเลย ไม่ต้องรอเข้าล็อบบี้/เริ่มเกม เผื่อกรณีขโมยเกิดขึ้นได้ทุกจังหวะ
+let lastSeenStolenAt; // undefined โดยตั้งใจ (แยกจาก null ที่แปลว่า "เอกสารมีอยู่แต่ยังไม่เคยถูกขโมย")
+onSnapshot(resultsRef, (snap) => {
+  const data = snap.data();
+  const stolenAt = data?.lastStolenAt?.toMillis?.() ?? null;
+  if (lastSeenStolenAt === undefined) {
+    lastSeenStolenAt = stolenAt; // snapshot แรก แค่จำ baseline ไว้ ไม่โชว์ popup
+    return;
+  }
+  if (stolenAt !== null && stolenAt !== lastSeenStolenAt) {
+    lastSeenStolenAt = stolenAt;
+    showStealAlert(data.lastStolenBy ?? "ใครบางคน", data.lastStolenAmount ?? 0);
+  }
+});
 
 function triggerBonusChallenge() {
   mode = "bonus";

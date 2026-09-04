@@ -22,6 +22,7 @@
     <button id="btn-brainrot">Test Fish Swim (sweep point across play area)</button>
     <button id="btn-steal">Test Steal Bonus (hold on one target, mocked Firestore)</button>
     <button id="btn-steal-empty">Test Steal Bonus (no targets — graceful skip)</button>
+    <button id="btn-coins">Test Coin Collect (sweep point across play area)</button>
     <button id="btn-all">Run All</button>
   </div>
   <div id="log">พร้อมทดสอบ...</div>
@@ -40,6 +41,7 @@
       runHandDanceFollow,
       runFishSwim,
       runStealBonus,
+      runCoinCollect,
     } from "../assets/js/bonus-engine.js";
 
     const logEl = document.getElementById("log");
@@ -249,6 +251,35 @@
       runStealBonus(ctx);
     }
 
+    async function testCoinCollect() {
+      log(
+        "\n=== Coin Collect: เหรียญยิงขึ้นจากล่างแล้วตกกลับใน ~1-1.5 วิ (สั้นกว่าปลามาก) — จับทันทีไม่ต้องค้าง\n" +
+          "     จำลองด้วยกวาดจุดชี้เป็นตาราง 5x5 หนาแน่น สลับเร็วทุก 50ms (ไม่ค้างจุดเดียวแบบตกปลา เพราะเหรียญ\n" +
+          "     ไม่ต้องการ hold) ครบรอบทุก 1.25 วิ วนตลอด 15 วิ ควรมีโอกาสสอยโดนบางเหรียญ (คะแนน > 0) ==="
+      );
+      const { ctx, firePoint, getScore } = makeCtx("Coin Collect");
+      runCoinCollect(ctx);
+      const xs = [0.2, 0.35, 0.5, 0.65, 0.8];
+      const ys = [0.25, 0.4, 0.55, 0.7, 0.85];
+      const points = [];
+      xs.forEach((x) => ys.forEach((y) => points.push([x, y])));
+      const start = Date.now();
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - start;
+        if (elapsed > 15500) {
+          clearInterval(interval);
+          log(
+            getScore() > 0
+              ? `  (สุ่มกวาดจุดเก็บเหรียญได้จริง คะแนนรวม ${getScore()} > 0 — logic การจับทันที/สุ่มแต้ม/combo/spawn ทำงาน)`
+              : "  ⚠️ กวาดครบแล้วยังไม่ได้คะแนนเลย ลองรันซ้ำอีกครั้ง (จังหวะเหรียญสุ่มทุกครั้ง อาจแค่โชคไม่ดีรอบนี้)"
+          );
+          return;
+        }
+        const [x, y] = points[Math.floor(elapsed / 50) % points.length];
+        firePoint(x, y);
+      }, 50);
+    }
+
     document.getElementById("btn-skibidi").onclick = testSkibidi;
     document.getElementById("btn-sky").onclick = testReachSky;
     document.getElementById("btn-bounce").onclick = testHandBounce;
@@ -256,6 +287,7 @@
     document.getElementById("btn-brainrot").onclick = testFishSwim;
     document.getElementById("btn-steal").onclick = testStealBonus;
     document.getElementById("btn-steal-empty").onclick = testStealBonusEmpty;
+    document.getElementById("btn-coins").onclick = testCoinCollect;
     document.getElementById("btn-all").onclick = async () => {
       await testSkibidi();
       await wait(6000);
@@ -270,6 +302,8 @@
       await testStealBonus();
       await wait(2500);
       await testStealBonusEmpty();
+      await wait(500);
+      await testCoinCollect();
     };
   </script>
 </body>

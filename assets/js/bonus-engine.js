@@ -24,6 +24,10 @@ export const BONUS_GAMES = [
   // กลไก "ชี้ค้าง 1 ใน 4 มุม" เดียวกับตอบคำถามหลักเป๊ะๆ (ระบบที่แม่นที่สุดในแอป — ไม่ใช่สลับเป้ารัวๆ ต่อเนื่อง
   // แบบ 67 ที่พักไปแล้ว) ตอนนี้มี 2 เกมพร้อมเล่นสลับกัน (ตกปลา + ขโมยโบนัส) ตามที่คุยกันไว้เรื่องความหลากหลาย
   { id: "steal-bonus", name: "ขโมยโบนัส!", emoji: "💰", ready: true },
+  // v6: เพิ่ม "เก็บเหรียญ" (แนวคิดครู) — เหรียญกระโดดขึ้นจากขอบล่างจอเป็นแนวโค้ง (แรงโน้มถ่วงจำลอง) แล้วตกกลับ
+  // ลงมาเอง แตะ/ชี้โดนตอนลอยอยู่กลางอากาศ = เก็บได้ทันที ไม่ต้องค้าง (ต่างจากตกปลาที่ต้องค้าง — เหรียญอยู่บน
+  // จอสั้นกว่ามาก ค้างไม่ทัน) ตอนนี้มี 3 เกมพร้อมเล่นสลับกันแล้ว (ตกปลา, ขโมยโบนัส, เก็บเหรียญ)
+  { id: "coin-collect", name: "เก็บเหรียญ!", emoji: "🪙", ready: true },
 ];
 
 let bag = [];
@@ -462,10 +466,11 @@ export function runFishSwim(ctx) {
   resetCornerLabels(corners); // เกมนี้ไม่ใช้กล่อง 4 มุมแล้ว เคลียร์ label ค้างจากเกมก่อนหน้ากันสับสน
   // ซ่อนกล่องคำตอบ 4 มุมไปเลยทั้งเกม (ว่างเปล่าอยู่แล้วแต่ .answer-corner ยังมีพื้นหลังสีทึบของตัวเอง โชว์
   // เป็นกรอบสี่เหลี่ยมค้างอยู่ตลอด ครูรายงานว่าเกะกะ/บังตาเวลาไล่จับปลาที่ว่ายผ่านบริเวณนั้น) — v2: ต้องใช้
-  // class .fish-game-hidden (มี !important ใน style.css) ไม่ใช่ el.style.opacity ตรงๆ แบบรอบแรก เพราะกล่อง
-  // เพิ่งผ่านแอนิเมชัน .reveal-in (fill-mode:forwards จากตอนคำถามก่อนหน้าโผล่มา) ซึ่งชนะ inline style
-  // normal-priority เสมอตาม CSS cascade — ครูส่งภาพจอมายืนยันว่ากล่องยังโชว์เต็มๆ ทั้งที่ตั้ง opacity ให้แล้ว
-  Object.values(corners).forEach((el) => el.classList.add("fish-game-hidden"));
+  // class .bonus-corners-hidden (มี !important ใน style.css, ใช้ร่วมกับเกม coin-collect ด้วย) ไม่ใช่
+  // el.style.opacity ตรงๆ แบบรอบแรก เพราะกล่องเพิ่งผ่านแอนิเมชัน .reveal-in (fill-mode:forwards จากตอน
+  // คำถามก่อนหน้าโผล่มา) ซึ่งชนะ inline style normal-priority เสมอตาม CSS cascade — ครูส่งภาพจอมายืนยันว่า
+  // กล่องยังโชว์เต็มๆ ทั้งที่ตั้ง opacity ให้แล้ว
+  Object.values(corners).forEach((el) => el.classList.add("bonus-corners-hidden"));
 
   const startTime = performance.now();
   let fishes = []; // { el, x, y, vx, vy, catchStartTs }
@@ -519,7 +524,7 @@ export function runFishSwim(ctx) {
     fishes.forEach((f) => f.el.remove());
     fishes = [];
     resetCornerLabels(corners);
-    Object.values(corners).forEach((el) => el.classList.remove("fish-game-hidden"));
+    Object.values(corners).forEach((el) => el.classList.remove("bonus-corners-hidden"));
     ctx.setZoneHandler(null);
     ctx.onCleanupExtra?.();
   }
@@ -741,6 +746,150 @@ export function runStealBonus(ctx) {
     });
 }
 
+// ============ เกม 7: เก็บเหรียญ (แนวคิดครู "เหรียญกระโดดขึ้นจากล่างจอ แล้วตกกลับลงมาเอง") ============
+// ใช้โครงเดียวกับ runFishSwim (point:{x,y} ต่อเนื่องจาก gesture stream, ไม่ผ่าน zone/quadrant, setTimeout
+// เป็นตัวจบเกมจริงไม่ใช่ RAF — บทเรียนจากบั๊กที่เจอตอนเขียนตกปลา) ต่างกันที่ฟิสิกส์การเคลื่อนที่: ปลาว่าย
+// bounce ซ้าย-ขวา/บน-ล่างในกรอบ ส่วนเหรียญยิงขึ้นจากขอบล่างเป็นเส้นโค้ง (แรงโน้มถ่วงจำลองทำให้ vy ค่อยๆ
+// เพิ่มขึ้นจนกลับทิศ) แล้วตกกลับลงไปที่เส้นเริ่มพอดี ถ้าไม่ได้เก็บก็ถือว่าพลาดไปเลย (ไม่เด้งกลับขึ้นใหม่)
+// จับ = แค่ชี้/แตะโดนตอนลอยอยู่ ไม่ต้องค้างเหมือนตกปลา เพราะเหรียญอยู่บนจอสั้นกว่ามาก (~1-1.5 วิ) ค้างไม่ทัน
+export function runCoinCollect(ctx) {
+  const { corners, stage, onScore, onEnd } = ctx;
+  const DURATION_MS = 15000;
+  const MAX_COINS = 3;
+  const GRAVITY = 1.15; // สัดส่วนจอ/วินาที² — ค่อยๆ ดึง vy กลับลงจนเหรียญเริ่มตกหลังขึ้นถึงจุดสูงสุด
+  const CATCH_RX = 0.14;
+  const CATCH_RY = 0.11;
+  const MARGIN_X = 0.1;
+  const START_Y = 0.86; // เส้นขอบล่างที่เหรียญยิงขึ้นมา/ตกกลับไปหาย
+  const MIN_Y = 0.2; // เพดานสูงสุดที่เหรียญขึ้นไปได้ (กันชนหัวข้อ/badge ด้านบน)
+
+  resetCornerLabels(corners);
+  Object.values(corners).forEach((el) => el.classList.add("bonus-corners-hidden"));
+
+  const startTime = performance.now();
+  let coins = []; // { el, x, y, vx, vy }
+  let combo = 0;
+  let ended = false;
+  let rafId = null;
+  let spawnTimeout = null;
+  let lastTick = startTime;
+
+  function randRange(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function spawnCoin() {
+    const el = document.createElement("div");
+    el.className = "coin-pop";
+    el.textContent = "🪙";
+    stage.appendChild(el);
+    coins.push({
+      el,
+      x: randRange(MARGIN_X, 1 - MARGIN_X),
+      y: START_Y,
+      vx: randRange(-0.06, 0.06),
+      vy: -randRange(0.55, 0.85), // ติดลบ = ขึ้น (y น้อยลง) ความแรงสุ่มให้เหรียญขึ้นสูงไม่เท่ากันทุกครั้ง
+    });
+  }
+
+  function removeCoin(coin) {
+    coin.el.remove();
+    coins = coins.filter((c) => c !== coin);
+  }
+
+  function cleanup() {
+    cancelAnimationFrame(rafId);
+    clearTimeout(spawnTimeout);
+    clearTimeout(endTimeout);
+    coins.forEach((c) => c.el.remove());
+    coins = [];
+    resetCornerLabels(corners);
+    Object.values(corners).forEach((el) => el.classList.remove("bonus-corners-hidden"));
+    ctx.setZoneHandler(null);
+    ctx.onCleanupExtra?.();
+  }
+
+  function finish() {
+    if (ended) return;
+    ended = true;
+    cleanup();
+    onEnd();
+  }
+
+  // จบเกมด้วย setTimeout เสมอ (ไม่เช็คเงื่อนไขจบใน tick()/RAF) — RAF โดน browser หยุดเองถ้าแท็บไม่ visible
+  // เจอบั๊กนี้มาแล้วตอนเขียนตกปลารอบแรก ดูคอมเมนต์ที่ runFishSwim ด้านบนประกอบ
+  const endTimeout = setTimeout(finish, DURATION_MS);
+
+  function collect(coin) {
+    const points = 15 + Math.floor(Math.random() * 26) + Math.min(combo, 5) * 5; // 15-40 + combo bonus
+    combo += 1;
+    onScore(points);
+    removeCoin(coin);
+  }
+
+  function tick() {
+    if (ended) return;
+    const now = performance.now();
+    const dt = Math.min((now - lastTick) / 1000, 0.1);
+    lastTick = now;
+
+    for (const coin of coins.slice()) {
+      coin.vy += GRAVITY * dt;
+      coin.x += coin.vx * dt;
+      coin.y += coin.vy * dt;
+      if (coin.x < MARGIN_X || coin.x > 1 - MARGIN_X) coin.vx *= -1;
+      if (coin.y < MIN_Y) {
+        coin.y = MIN_Y;
+        coin.vy = Math.abs(coin.vy); // ชนเพดานบน ให้ตกกลับลงมาเลยแทนที่จะทะลุ
+      }
+      if (coin.y >= START_Y && coin.vy > 0) {
+        // ตกกลับถึงเส้นเริ่มแล้วโดยไม่ได้ถูกเก็บ — พลาด ตัด combo ทิ้ง
+        combo = 0;
+        removeCoin(coin);
+        continue;
+      }
+      coin.el.style.left = `${coin.x * 100}%`;
+      coin.el.style.top = `${coin.y * 100}%`;
+    }
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function maybeSpawn() {
+    if (ended) return;
+    if (coins.length < MAX_COINS) spawnCoin();
+    const remaining = DURATION_MS - (performance.now() - startTime);
+    if (remaining > 500) {
+      spawnTimeout = setTimeout(maybeSpawn, randRange(650, 1300));
+    }
+  }
+
+  function checkCollect(px, py) {
+    if (px == null || py == null) return;
+    for (const coin of coins.slice()) {
+      if (Math.abs(px - coin.x) <= CATCH_RX && Math.abs(py - coin.y) <= CATCH_RY) collect(coin);
+    }
+  }
+
+  spawnCoin();
+  maybeSpawn();
+  rafId = requestAnimationFrame(tick);
+
+  ctx.setZoneHandler(({ point }) => checkCollect(point?.x ?? null, point?.y ?? null));
+
+  // tap fallback: แตะตัวเหรียญโดยตรงเก็บได้ทันที เหมือนกันเกมตกปลา
+  function onStageClick(e) {
+    const el = e.target.closest(".coin-pop");
+    if (!el) return;
+    const coin = coins.find((c) => c.el === el);
+    if (coin) collect(coin);
+  }
+  stage.addEventListener("click", onStageClick);
+  ctx.onCleanupExtra = () => {
+    stage.removeEventListener("click", onStageClick);
+  };
+}
+
 export const BONUS_RUNNERS = {
   "skibidi-dodge": runSkibidiDodge,
   "reach-sky": runReachForSky,
@@ -748,4 +897,5 @@ export const BONUS_RUNNERS = {
   "hand-dance-follow": runHandDanceFollow,
   "brainrot-swat": runFishSwim,
   "steal-bonus": runStealBonus,
+  "coin-collect": runCoinCollect,
 };
