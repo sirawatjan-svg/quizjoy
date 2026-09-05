@@ -452,6 +452,18 @@ async function fetchStealTargets() {
   return all.slice(0, 4);
 }
 
+// ครูรายงานเจอเคสจริงที่กล่อง 4 มุมของเกมขโมยโบนัสค้างที่ไอคอน ⏳ ไม่ยอมโหลดชื่อจริงเลยทั้งรอบ — สาเหตุที่
+// เป็นไปได้คือ getDocs() ข้างบนช้า/ค้างกว่าปกติบนไวไฟห้องเรียนจริง (Firestore JS SDK ไม่มี timeout ในตัวให้
+// ถ้าคำขอค้างจริงๆ) ครอบ fetchStealTargets() ด้วย timeout กันไว้เอง — ถ้าโหลดไม่เสร็จภายใน 4 วิ ถือว่า "ไม่มี
+// เป้าหมาย" ไปเลย (ใช้ทั้งตอนเช็คก่อนเลือกเกมด้านล่าง และส่งต่อเป็น ctx.fetchTargets ให้ runStealBonus ใช้ตรงๆ
+// จุดเดียวกัน ไม่ต้องครอบซ้ำสองที่)
+function fetchStealTargetsSafe() {
+  return Promise.race([
+    fetchStealTargets().catch(() => []),
+    new Promise((resolve) => setTimeout(() => resolve([]), 4000)),
+  ]);
+}
+
 // หักคะแนนโบนัสจากเป้าหมายจริงใน Firestore (คะแนนของตัวเองที่ได้จากการขโมย ผ่าน onScore ปกติแยกต่างหากอยู่
 // แล้ว ไม่เกี่ยวกับฟังก์ชันนี้) ใช้ increment(-amount) แทน read-then-write ธรรมดา กันปัญหา race condition ถ้า
 // มีคนขโมยเป้าหมายเดียวกันพร้อมกันพอดี (ยังมีโอกาสน้อยมากที่ยอดจะติดลบถ้าจังหวะตรงกันเป๊ะ — Firestore
@@ -534,10 +546,10 @@ async function triggerBonusChallenge() {
   // ถัดไปจากถุงเดิมแทน — วนได้อย่างปลอดภัยไม่มีวันติดลูปไม่จบ เพราะถุงสุ่มของ nextBonusGame() มีเกมที่ไม่ต้อง
   // พึ่งข้อมูลนี้เลยอยู่เสมอ (ตกปลา/เก็บเหรียญ) พอดึงเจอเกมอื่นที่ไม่ใช่ขโมยโบนัส เงื่อนไขจะเป็นเท็จทันที
   if (game.id === "steal-bonus") {
-    let targets = await fetchStealTargets();
+    let targets = await fetchStealTargetsSafe();
     while (targets.length === 0 && game.id === "steal-bonus") {
       game = nextBonusGame();
-      targets = game.id === "steal-bonus" ? await fetchStealTargets() : [];
+      targets = game.id === "steal-bonus" ? await fetchStealTargetsSafe() : [];
     }
   }
 
@@ -584,7 +596,7 @@ async function triggerBonusChallenge() {
       },
       // ใช้เฉพาะเกม "ขโมยโบนัส" — เกมอื่นไม่เรียกสองตัวนี้เลย (ดูคอมเมนต์เหนือ fetchStealTargets ด้านบนว่า
       // ทำไมแยก Firestore ออกมาไว้ที่หน้านี้แทนที่จะให้ bonus-engine.js คุยเอง)
-      fetchTargets: fetchStealTargets,
+      fetchTargets: fetchStealTargetsSafe,
       stealFrom: stealBonusPoints,
     });
   }, bannerDurationMs);
@@ -800,12 +812,22 @@ async function showRankAndPodium() {
 
     const top3 = all.slice(0, 3);
     if (top3.length > 0) {
-      podiumListEl.innerHTML = top3
-        .map(
-          (r, i) =>
-            `<li><span class="medal-badge medal-${i + 1}">${i + 1}</span> ${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน</li>`
-        )
-        .join("");
+      // สร้างด้วย DOM API + textContent แทนต่อ string แล้วยัดผ่าน innerHTML ตรงๆ — r.name มาจากที่นักเรียน
+      // คนอื่นพิมพ์เอง (แอปนี้ไม่มีระบบ auth ฝั่งนักเรียน ใครจะพิมพ์อะไรมาเป็นชื่อก็ได้) ถ้าต่อ string แล้วใส่
+      // ผ่าน innerHTML จะเปิดช่องให้แอบใส่ HTML/script ผ่านชื่อได้ (stored XSS) — pattern เดียวกับ
+      // renderTargets() ใน assets/js/bonus-engine.js (เกมขโมยโบนัส) ที่กันจุดนี้ไว้ตั้งแต่แรก
+      podiumListEl.innerHTML = "";
+      top3.forEach((r, i) => {
+        const li = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = `medal-badge medal-${i + 1}`;
+        badge.textContent = String(i + 1);
+        li.appendChild(badge);
+        li.appendChild(
+          document.createTextNode(` ${r.name ?? "?"} — ${(r.score ?? 0) + (r.bonusScore ?? 0)} คะแนน`)
+        );
+        podiumListEl.appendChild(li);
+      });
       podiumPanelEl.style.display = "block";
     }
   } catch (err) {
