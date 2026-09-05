@@ -208,6 +208,19 @@ function getHandTracker(label) {
   return t;
 }
 
+// ตำแหน่ง "ปลายนิ้วชี้" ที่ใช้จำแนกโซนจริงๆ — เดิมใช้ landmark[8] (ปลายนิ้วชี้สุดๆ) เพียวๆ ครูรายงานเจอ
+// เคสจริงว่าบางท่าทาง/มุมกล้อง จุดปลายนิ้วชี้เพี้ยนไปทาง "นิ้วโป้ง" (โมเดลสับสนจุดปลายนิ้วชี้ที่แท้จริงเวลา
+// นิ้วโป้งอยู่ใกล้/บังมุมกล้อง) ทำให้เลือกโซนผิดจากตำแหน่งที่ตั้งใจชี้จริงๆ — เฉลี่ยกับ landmark[6] (ข้อกลาง
+// นิ้วชี้ ตำแหน่งค่อนไปทางฝ่ามือกว่า ไม่ใช่ปลายสุด) ด้วย ยังคงทิศทางที่นิ้วชี้อยู่เหมือนเดิม แต่จุดที่ใช้จำแนก
+// โซนไม่ผูกกับตำแหน่งปลายนิ้วเป๊ะๆ อย่างเดียว ลดโอกาสที่การตรวจจับปลายนิ้วผิดพลาดแค่จุดเดียวจะเปลี่ยนโซนไปเลย
+function indexPoint(h) {
+  const tip = h?.[8];
+  const mid = h?.[6];
+  if (!tip) return null;
+  if (!mid) return tip;
+  return { x: (tip.x + mid.x) / 2, y: (tip.y + mid.y) / 2 };
+}
+
 // เลือก "มือที่ใช้ชี้" เมื่อเจอสองมือ — ใช้มือที่ยกสูงกว่า (y น้อยกว่า) ตรงกับสัญชาตญาณว่า
 // "มือที่ยกขึ้นมาคือมือที่ตั้งใจชี้" ส่วนอีกมือที่ห้อยอยู่ยังวาดโครงให้เห็นแต่ไม่นับเป็นตัวเลือก
 function pickPointingHand(hands) {
@@ -299,7 +312,7 @@ export async function startGestureDetection(
     const presentLabels = new Set();
     const allHandsData = hands
       .map((h, i) => {
-        const tip = h[8];
+        const tip = indexPoint(h);
         if (!tip) return null;
         const label = handednesses[i]?.[0]?.categoryName ?? `hand${i}`;
         presentLabels.add(label);
@@ -352,7 +365,7 @@ export async function startGestureDetection(
         smoothX = null;
         smoothY = null;
       }
-      const tip = pointing[8];
+      const tip = indexPoint(pointing);
       const mx = 1 - tip.x; // กลับด้านให้ตรงกับภาพ mirror บนจอ (กล้องหน้า)
 
       smoothX = smoothX === null ? mx : smoothX * SMOOTHING + mx * (1 - SMOOTHING);
