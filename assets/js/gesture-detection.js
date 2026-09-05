@@ -125,6 +125,22 @@ export function resetCalibration() {
 let currentZone = null;
 let zoneStartTs = 0;
 
+// --- Debounce การ "สลับโซน" เชิงเวลา (ไม่ใช่แค่ hysteresis เชิงระยะทางแบบ pointToZone) ---
+// ครูรายงานเคสจริงที่แม่นยำมาก: "นิ้วชี้ไปกล่องที่ถูกแล้ว แต่จังหวะที่นิ้วอื่นๆ งอ/กำมือขึ้นมาแป๊บเดียว
+// (เช่นตอนเผลอเกร็งมือตอนใกล้จะยืนยัน) ดันไปเลือกข้ออื่นแทน" — ท่ากำมือแป๊บเดียวทำให้โมเดลตรวจจับมือคำนวณ
+// ตำแหน่งข้อต่อทั้งมือใหม่ชั่วขณะ (ไม่ใช่แค่ปลายนิ้วชี้เพี้ยนแบบกรณีนิ้วโป้งที่แก้ไปแล้ว) จุดที่ใช้จำแนกโซน
+// เลยกระโดดไปโซนอื่นได้ "แค่ชั่วครู่" ก่อนจะกลับมาที่จุดเดิมเอง — แต่โค้ดเดิมเปลี่ยน currentZone ทันทีที่เห็น
+// โซนใหม่แค่เฟรมเดียว (ไม่มีการยืนยันเลย) เจอ blip แบบนี้เมื่อไหร่ก็สลับ currentZone ทันที รีเซ็ตเวลาค้างของ
+// โซนที่ตั้งใจชี้จริงทิ้งไปเปล่าๆ ทุกครั้ง
+// วิธีแก้: ต้องเห็นโซนใหม่ "ค้างต่อเนื่อง" ครบ ZONE_CHANGE_CONFIRM_MS ก่อนถึงจะยอมสลับ currentZone จริง
+// (debounce เชิงเวลา คนละชั้นกับ HYSTERESIS_MARGIN ที่เป็น debounce เชิงระยะทาง — ใช้ร่วมกันสองชั้น) ตั้งใจ
+// ใช้หน่วยเวลา (ms) ไม่ใช่จำนวนเฟรม เพราะจำนวนเฟรมที่เท่ากันกินเวลาจริงต่างกันมากระหว่างเครื่อง FPS สูง/ต่ำ —
+// blip แค่ชั่วครู่จากมือกำแป๊บเดียวจะไม่ผ่านเกณฑ์นี้ ส่วนการขยับไปโซนใหม่จริงจังจะค้างเกินเวลานี้เองตามปกติ
+// อยู่แล้ว ไม่รู้สึกหน่วงเพิ่มจนสังเกตเห็น
+const ZONE_CHANGE_CONFIRM_MS = 130;
+let pendingZone = null;
+let pendingZoneSinceTs = 0;
+
 // --- Grace period กันมือ "หลุดเฟรมชั่วครู่" รีเซ็ตนาฬิกาทั้งที่ยังไม่ได้ขยับไปไหนจริง ---
 // ปัญหาที่พบจากฟีดแบ็กจริง (ก.ย. 2026): นักเรียนหลายคนรายงานว่า "ชี้แล้วค้าง ไม่ติดสักที" / "ปุ่มไม่ค่อย
 // ติด" / "กล้องไม่ค่อยตรวจจับ" — ไม่ใช่แค่โหมด 67 แต่เป็นทั้งระบบ (รวมตอบคำถามหลักด้วย) พบมากขึ้นบน Android
@@ -182,15 +198,23 @@ export function createZoneTracker() {
 }
 
 // Exponential moving average ลดอาการสั่น/กระตุกของจุดที่จับได้ ให้ประสบการณ์ลื่นขึ้น
-// ลดจาก 0.55 -> 0.4 (ก.ย. 2026) ตามฟีดแบ็กครู: "ดึงมือออกเร็วๆ แล้วระบบช้า เลือกคำตอบผิด" และ "บางทีค้าง
-// อยู่ที่คำตอบก่อนหน้าทั้งที่ไม่ได้ตั้งใจ" — ทั้งสองอาการตรงกับ "อาการคลาสสิกของ EMA smooth มากไป": ตำแหน่งที่
-// ใช้จำแนกโซนจริงๆ (smoothX/smoothY) จะ "ตามหลัง" ตำแหน่งนิ้วจริงอยู่เสมอ ยิ่ง SMOOTHING สูงยิ่งตามหลังนาน
-// เวลาขยับมือเร็ว (เช่นรีบดึงมือออกไปเปลี่ยนคำตอบ) ตำแหน่งที่จำแนกโซนจะยัง "ค้าง" อยู่แถวๆ ตำแหน่งเก่าไปอีก
-// หลายเฟรมกว่าจะตามทัน — ถ้าค้างนานพอ (ผนวกกับ hysteresis ที่ตั้งใจหน่วงการเปลี่ยนโซนอยู่แล้ว) อาจไปโดน
-// confirm ที่คำตอบเก่าไปก่อนจะตามทันจริง ลดค่าลงให้ตามทันไวขึ้น แลกกับสั่นไหวเพิ่มขึ้นเล็กน้อย (ยังไม่ใช่ 0 —
-// ปิด smoothing ไปเลยจะกลับไปเจอปัญหาเดิมที่เคยแก้คือมือสั่นเบาๆ ทำให้โซนกระโดดไปมา) ยังไม่เคยทดสอบค่าใหม่นี้
-// กับกล้องจริง (แซนด์บ็อกซ์เปิดกล้องไม่ได้) ต้องรอผลทดสอบจริงยืนยันอีกที
-const SMOOTHING = 0.4; // 0 = ไม่ smooth เลย, 1 = ไม่ขยับเลย
+// v3 (ก.ย. 2026): เปลี่ยนจากค่าคงที่ต่อเฟรม (0.55 แล้วลดเหลือ 0.4) มาเป็นสูตรที่ "ไม่ขึ้นกับ FPS" แทน — ครู
+// ส่งภาพหน้าจอมาพร้อมตัวเลขวินิจฉัยที่มุมจอ เห็นชัดว่าเครื่องที่มีปัญหาวิ่งอยู่แค่ ~7fps เท่านั้น! ค่าคงที่ต่อ
+// เฟรมแบบเดิม (สูตร smooth = smooth*SMOOTHING + new*(1-SMOOTHING) ทุกเฟรม) มีปัญหาเชิงโครงสร้าง: เวลาที่ใช้
+// "ตามทัน" ตำแหน่งจริงหน่วยเป็นวินาทีจริงขึ้นอยู่กับว่ามีกี่เฟรมต่อวินาที ไม่ใช่ค่าคงที่ — เครื่อง FPS ต่ำ
+// (ต้องการความช่วยเหลือเรื่อง lag มากที่สุด) กลับล่าช้ากว่าเครื่อง FPS สูงหลายเท่าตัวด้วยค่าคงที่เดียวกันเป๊ะๆ
+// อธิบายได้ว่าทำไมปรับ SMOOTHING ลงแล้วบางเครื่องยังรู้สึกหน่วงอยู่ดี
+// สูตรใหม่: คำนวณ alpha ต่อเฟรมจาก dt จริง (เวลาที่ผ่านมาจริงตั้งแต่เฟรมก่อนหน้า) เทียบกับค่าคงที่เวลา
+// SMOOTH_TAU_MS — ยิ่ง dt มาก (เฟรมห่างกันนาน เช่นเครื่อง FPS ต่ำ) ยิ่งขยับเข้าใกล้ตำแหน่งใหม่มากขึ้นในเฟรม
+// นั้นเฟรมเดียว ชดเชยจำนวนเฟรมที่หายไปเอง — ที่ dt >= SMOOTH_TAU_MS (เช่น 7fps ที่ dt~143ms > 90ms) alpha
+// จะเท่ากับ 1 พอดี คือ "สแนป" ไปตำแหน่งจริงทันทีไม่ผสมเลย ซึ่งสมเหตุสมผล: เครื่อง FPS ต่ำมากๆ ไม่มีเฟรมถี่ๆ
+// ให้ผสมกันอยู่แล้ว จะรอผสมทีละนิดไปทำไม สู้ตามตำแหน่งจริงตรงๆ เลยดีกว่า ส่วนเครื่อง FPS สูง (เฟรมถี่ ต้องการ
+// การกรองสั่นไหวมากกว่า) ยังได้ผล smoothing ตามปกติ ไม่กระทบ
+const SMOOTH_TAU_MS = 90;
+// export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) เช่นเดียวกับ pointToZone ด้านล่าง
+export function smoothAlpha(dt) {
+  return Math.min(1, Math.max(0, dt) / SMOOTH_TAU_MS);
+}
 let smoothX = null;
 let smoothY = null;
 
@@ -253,8 +277,11 @@ export async function startGestureDetection(
   currentZone = null;
   zoneStartTs = performance.now();
   lostSinceTs = null;
+  pendingZone = null;
+  pendingZoneSinceTs = 0;
   handTrackers.clear();
   let usePose = bodySkeleton && !!poseLandmarker;
+  let lastFrameTs = performance.now();
 
   // --- FPS watchdog ---
   // โครงร่างกาย (pose) เป็นโมเดลตัวที่สองที่ต้องรันทุกเฟรม มือถือรุ่นกลาง-ล่างอาจไม่ไหว
@@ -269,6 +296,9 @@ export async function startGestureDetection(
     if (!running) return;
 
     const now = performance.now();
+    const frameDt = now - lastFrameTs; // เวลาจริงที่ผ่านไปตั้งแต่เฟรมก่อนหน้า (ms) — ใช้ทำ smoothing แบบ
+    // ไม่ขึ้นกับ FPS ด้านล่าง (ดูคอมเมนต์ตรง smoothAlpha)
+    lastFrameTs = now;
     let handResult, poseResult;
     try {
       handResult = handLandmarker.detectForVideo(videoEl, now);
@@ -318,8 +348,9 @@ export async function startGestureDetection(
         presentLabels.add(label);
         const mx = 1 - tip.x;
         const t = getHandTracker(label);
-        t.smoothX = t.smoothX === null ? mx : t.smoothX * SMOOTHING + mx * (1 - SMOOTHING);
-        t.smoothY = t.smoothY === null ? tip.y : t.smoothY * SMOOTHING + tip.y * (1 - SMOOTHING);
+        const alpha = smoothAlpha(frameDt);
+        t.smoothX = t.smoothX === null ? mx : t.smoothX + (mx - t.smoothX) * alpha;
+        t.smoothY = t.smoothY === null ? tip.y : t.smoothY + (tip.y - t.smoothY) * alpha;
         return { zone: t.tracker.classify(t.smoothX, t.smoothY), point: { x: t.smoothX, y: t.smoothY } };
       })
       .filter(Boolean);
@@ -368,14 +399,38 @@ export async function startGestureDetection(
       const tip = indexPoint(pointing);
       const mx = 1 - tip.x; // กลับด้านให้ตรงกับภาพ mirror บนจอ (กล้องหน้า)
 
-      smoothX = smoothX === null ? mx : smoothX * SMOOTHING + mx * (1 - SMOOTHING);
-      smoothY = smoothY === null ? tip.y : smoothY * SMOOTHING + tip.y * (1 - SMOOTHING);
-
-      const zone = pointToZone(smoothX, smoothY);
-      if (zone !== currentZone) {
-        currentZone = zone;
-        zoneStartTs = now;
+      {
+        const alpha = smoothAlpha(frameDt);
+        smoothX = smoothX === null ? mx : smoothX + (mx - smoothX) * alpha;
+        smoothY = smoothY === null ? tip.y : smoothY + (tip.y - smoothY) * alpha;
       }
+
+      const rawZone = pointToZone(smoothX, smoothY);
+      if (rawZone !== currentZone) {
+        if (currentZone === null) {
+          // ยังไม่เคยมีโซนที่ "ยึด" อยู่เลย (เพิ่งเริ่มชี้/เพิ่ง reset) — รับทันทีไม่ต้อง debounce เหมือน
+          // พฤติกรรมเดิม debounce มีไว้กันแค่ "หลุดจากโซนที่ถืออยู่แล้วชั่วครู่" ไม่ใช่หน่วงการเริ่มต้นครั้งแรก
+          currentZone = rawZone;
+          zoneStartTs = now;
+          pendingZone = null;
+          pendingZoneSinceTs = 0;
+        } else if (rawZone === pendingZone) {
+          if (now - pendingZoneSinceTs >= ZONE_CHANGE_CONFIRM_MS) {
+            currentZone = rawZone;
+            zoneStartTs = now;
+            pendingZone = null;
+            pendingZoneSinceTs = 0;
+          }
+        } else {
+          pendingZone = rawZone;
+          pendingZoneSinceTs = now;
+        }
+      } else if (pendingZone !== null) {
+        // ตำแหน่งดิบกลับมาตรงกับ currentZone เดิมแล้ว (blip จบแล้ว/กลับตัว) เคลียร์ pending ทิ้ง
+        pendingZone = null;
+        pendingZoneSinceTs = 0;
+      }
+      const zone = currentZone; // รายงานโซนที่ "ยืนยันแล้ว" (ผ่าน debounce) ไม่ใช่ค่าดิบรายเฟรม
       const heldMs = now - zoneStartTs;
       onUpdate({
         ...common,
@@ -413,6 +468,8 @@ export async function startGestureDetection(
       smoothY = null;
       lastZone = null; // มือหลุดเฟรม รีเซ็ต hysteresis กันค้างโซนเก่าตอนมือกลับเข้ามาที่อื่น
       lostSinceTs = null;
+      pendingZone = null;
+      pendingZoneSinceTs = 0;
       onUpdate({ ...common, zone: null, point: null, progress: 0, confirmed: false, frozen: false });
     }
 
@@ -437,9 +494,11 @@ export function resetHoldTimer() {
   currentZone = null;
   zoneStartTs = performance.now();
   lostSinceTs = null;
+  pendingZone = null;
+  pendingZoneSinceTs = 0;
 }
 
 // เฉพาะ test: อ่าน state ภายในของนาฬิกาจับเวลา ยืนยันว่า resetHoldTimer() รีเซ็ตจริง
 export function _debugGetHoldState() {
-  return { currentZone, zoneStartTs, lostSinceTs };
+  return { currentZone, zoneStartTs, lostSinceTs, pendingZone, pendingZoneSinceTs };
 }

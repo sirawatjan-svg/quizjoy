@@ -16,7 +16,7 @@
   <div id="log">กำลังทดสอบ...</div>
 
   <script type="module">
-    import { pointToZone, resetZoneTracking } from "../assets/js/gesture-detection.js";
+    import { pointToZone, resetZoneTracking, smoothAlpha } from "../assets/js/gesture-detection.js";
 
     const logEl = document.getElementById("log");
     const lines = [];
@@ -61,6 +61,41 @@
     // ทดสอบ resetZoneTracking() ว่าเคลียร์ state จริง
     resetZoneTracking();
     check("หลัง reset แล้วชี้จุดใหม่ต้องได้โซนตาม quadrant ปกติทันที", pointToZone(0.7, 0.7), "br");
+
+    // smoothAlpha: ต้อง "ไม่ขึ้นกับ FPS" — ตามทันตำแหน่งจริงในเวลาจริงเท่ากัน ไม่ว่าจะมีกี่เฟรมในช่วงเวลานั้น
+    // (บั๊กที่เพิ่งแก้: ค่าคงที่ต่อเฟรมแบบเดิมทำให้เครื่อง FPS ต่ำตามทันช้ากว่าเครื่อง FPS สูงมาก ทั้งที่เวลา
+    // จริงผ่านไปเท่ากัน — ครูส่งภาพยืนยันเจอเครื่องที่วิ่งแค่ ~7fps จริง)
+    function simulateSmoothing(totalMs, fps, target) {
+      const dt = 1000 / fps;
+      let value = 0; // เริ่มจาก 0 ไล่ไปหา target
+      let elapsed = 0;
+      while (elapsed < totalMs) {
+        const alpha = smoothAlpha(dt);
+        value = value + (target - value) * alpha;
+        elapsed += dt;
+      }
+      return value;
+    }
+    const targetPos = 1;
+    const after200ms60fps = simulateSmoothing(200, 60, targetPos);
+    const after200ms7fps = simulateSmoothing(200, 7, targetPos);
+    // ข้อเท็จจริงที่ถูกต้องไม่ใช่ "ตามทันเท่ากันเป๊ะ" แต่คือ "เครื่อง FPS ต่ำต้องไม่มีวันตามทันช้ากว่าเครื่อง
+    // FPS สูง" (จุดบกพร่องเดิมที่เพิ่งแก้คือ FPS ต่ำตามทันช้ากว่ามาก) — ที่ 7fps นั้น dt (~143ms) เกิน
+    // SMOOTH_TAU_MS (90) อยู่แล้ว เลยสแนปเต็มที่ทุกเฟรม (alpha=1) ทำให้จริงๆ แล้ว "ไวกว่าหรือเท่ากับ" 60fps
+    // เสมอ ไม่ใช่แค่ "พอๆ กัน" — ตรงกันข้ามกับพฤติกรรมเดิม (ค่าคงที่ต่อเฟรม) ที่ยิ่ง FPS ต่ำยิ่งตามทันช้าลง
+    check(
+      "smoothAlpha: 7fps ต้องตามทันตำแหน่งจริงในเวลา 200ms ไวกว่าหรือเท่ากับ 60fps เสมอ (ไม่ใช่ช้ากว่าแบบเดิม) — " +
+        `60fps=${after200ms60fps.toFixed(3)} 7fps=${after200ms7fps.toFixed(3)}`,
+      after200ms7fps >= after200ms60fps,
+      true
+    );
+    check(
+      "smoothAlpha: dt เกิน SMOOTH_TAU_MS (90) ต้องสแนปเต็มที่ (alpha=1) — เครื่อง FPS ต่ำมากไม่ต้องรอผสมทีละนิด",
+      smoothAlpha(150),
+      1
+    );
+    check("smoothAlpha: dt=0 ต้องไม่ขยับเลย (alpha=0)", smoothAlpha(0), 0);
+    check("smoothAlpha: dt ติดลบ (เผื่อ clock เพี้ยน) ต้องไม่ทำให้ alpha ติดลบ", smoothAlpha(-50), 0);
 
     lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
     logEl.innerHTML = lines.join("\n");
