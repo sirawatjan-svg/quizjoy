@@ -103,19 +103,68 @@ let lastZone = null;
 let calibCx = 0.5;
 let calibCy = 0.5;
 
-export function setCalibration(cx, cy) {
+// --- Scale (gain) นอกเหนือจากแค่ขยับจุดศูนย์กลาง ---
+// ครูส่งภาพวินิจฉัยมาหลายภาพ เห็นตรงกันว่าจุดติดตามมือ (จุดเขียว) อยู่ใกล้เส้นแบ่งกลางระหว่างกล่องตลอด แม้
+// นักเรียนตั้งใจ calibrate ครบ 4 มุมจริงจังแล้วก็ตาม — เดิม finishCalibration() (student/app.js) ขยับแค่
+// "จุดศูนย์กลาง" (calibCx/calibCy) ให้ตรงกับค่าเฉลี่ยตำแหน่งที่มือไปถึงจริง แต่ไม่เคยปรับ "ระยะที่มือต้องขยับ
+// ถึงจะข้ามเส้นแบ่งโซน" เลย — ถ้ามือของคนๆ นั้นเอื้อมได้จริงแค่ระยะสั้นๆ จากจุดศูนย์กลาง (เช่นถือมือถือด้วย
+// มือเดียวแล้วใช้นิ้วโป้ง/นิ้วชี้มืออีกข้างขยับได้ไม่ไกล) ระยะที่เอื้อมได้จริงอาจใกล้เคียงกับ HYSTERESIS_MARGIN
+// (0.07) มากจนแทบไม่มีระยะเผื่อเหลือเลย ทำให้การชี้ปกติธรรมดาแกว่งข้ามเส้นแบ่งไปมาได้ง่ายๆ ทั้งที่ตั้งใจชี้
+// มุมเดิมนิ่งๆ — scaleX/scaleY ด้านล่างนี้แก้ตรงจุดนี้: ขยาย (หรือหด) ระยะจริงที่มือขยับได้ ให้ระยะห่างจาก
+// REFERENCE_SPAN เท่ากันเสมอไม่ว่าคนๆ นั้นจะเอื้อมได้ไกลแค่ไหนจริงๆ ระหว่าง calibrate
+const REFERENCE_SPAN = 0.25; // ระยะเป้าหมายที่อยากให้ "มุม" ห่างจากจุดศูนย์กลางหลัง apply scale แล้ว
+let calibScaleX = 1;
+let calibScaleY = 1;
+
+export function setCalibration(cx, cy, scaleX = 1, scaleY = 1) {
   calibCx = cx;
   calibCy = cy;
+  calibScaleX = scaleX;
+  calibScaleY = scaleY;
 }
 
 export function getCalibration() {
-  return { cx: calibCx, cy: calibCy };
+  return { cx: calibCx, cy: calibCy, scaleX: calibScaleX, scaleY: calibScaleY };
 }
 
-// รีเซ็ตกลับเป็นค่าเริ่มต้น (กึ่งกลางจอเป๊ะๆ) — ใช้ตอนข้าม calibration หรือระหว่างเทส
+// รีเซ็ตกลับเป็นค่าเริ่มต้น (กึ่งกลางจอเป๊ะๆ ไม่มีการขยาย/หดระยะ) — ใช้ตอนข้าม calibration หรือระหว่างเทส
 export function resetCalibration() {
   calibCx = 0.5;
   calibCy = 0.5;
+  calibScaleX = 1;
+  calibScaleY = 1;
+}
+
+// รับจุด calibrate ทั้ง 4 มุม { tl, tr, bl, br } (แต่ละอันเป็น {x,y} — ขาดมุมไหนไปให้ผลลัพธ์เป็นค่าเริ่มต้น
+// ปลอดภัย) แล้วคำนวณ {cx, cy, scaleX, scaleY} พร้อมส่งเข้า setCalibration() ตรงๆ — ตั้งใจแยกการคำนวณล้วนๆ
+// ออกมาจาก setCalibration() (ที่แค่เก็บ state) เพื่อให้ทดสอบสูตรคำนวณตรงๆ ได้โดยไม่ต้องยุ่งกับ state ของ
+// โมดูลนี้เลย (ดู test/calibration-selftest.html)
+export function computeCalibrationFromPoints(p) {
+  if (!p?.tl || !p?.tr || !p?.bl || !p?.br) return { cx: 0.5, cy: 0.5, scaleX: 1, scaleY: 1 };
+
+  const leftX = (p.tl.x + p.bl.x) / 2;
+  const rightX = (p.tr.x + p.br.x) / 2;
+  const topY = (p.tl.y + p.tr.y) / 2;
+  const bottomY = (p.bl.y + p.br.y) / 2;
+  const cx = (leftX + rightX) / 2;
+  const cy = (topY + bottomY) / 2;
+
+  // กันค่าผิดปกติ (เช่น มือหลุดเฟรมกลางคันแล้วจับจุดสุดขอบมาเป็นค่า calibrate) ไม่ให้แย่กว่าค่าเริ่มต้น
+  const safeCx = Number.isFinite(cx) && cx > 0.15 && cx < 0.85 ? cx : 0.5;
+  const safeCy = Number.isFinite(cy) && cy > 0.15 && cy < 0.85 && bottomY > topY ? cy : 0.5;
+
+  // ระยะเฉลี่ยที่มือ "เอื้อมได้จริง" จากจุดศูนย์กลางที่คำนวณได้ — ถ้าเอื้อมได้สั้นกว่า REFERENCE_SPAN มาก
+  // (เช่น ถือมือถือมือเดียว ขยับได้แค่นิดเดียว) scale จะ > 1 ขยายผลของการขยับจริงให้เด็ดขาดขึ้น ในทางกลับกัน
+  // ถ้าเอื้อมได้ไกลผิดปกติ scale จะ < 1 ลดความไวลงบ้าง กันไม่ให้ noise เล็กๆ ถูกขยายจนเกินจริง
+  const spanX = (Math.abs(leftX - safeCx) + Math.abs(rightX - safeCx)) / 2;
+  const spanY = (Math.abs(topY - safeCy) + Math.abs(bottomY - safeCy)) / 2;
+  const MIN_SCALE = 0.6;
+  const MAX_SCALE = 3;
+  const clampScale = (s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+  const scaleX = Number.isFinite(spanX) && spanX > 0.01 ? clampScale(REFERENCE_SPAN / spanX) : 1;
+  const scaleY = Number.isFinite(spanY) && spanY > 0.01 ? clampScale(REFERENCE_SPAN / spanY) : 1;
+
+  return { cx: safeCx, cy: safeCy, scaleX, scaleY };
 }
 
 // นาฬิกาจับเวลา "ค้างชี้นานพอหรือยัง" — ต้องอยู่ระดับโมดูล (ไม่ใช่ตัวแปรในฟังก์ชัน) เพราะต้องรีเซ็ตได้
@@ -157,8 +206,8 @@ let lostSinceTs = null;
 // export ไว้เฉพาะเพื่อทดสอบ (test/gesture-hysteresis-selftest.html) — ตัวแอปจริงเรียกผ่าน
 // startGestureDetection เท่านั้น ไม่ได้เรียก pointToZone ตรงๆ
 export function pointToZone(mx, y) {
-  const dx = mx - calibCx;
-  const dy = y - calibCy;
+  const dx = (mx - calibCx) * calibScaleX;
+  const dy = (y - calibCy) * calibScaleY;
   const candidate = dx < 0 ? (dy < 0 ? "tl" : "bl") : dy < 0 ? "tr" : "br";
 
   if (lastZone && candidate !== lastZone) {
@@ -180,8 +229,8 @@ export function createZoneTracker() {
   let trackerLastZone = null;
   return {
     classify(mx, y) {
-      const dx = mx - calibCx;
-      const dy = y - calibCy;
+      const dx = (mx - calibCx) * calibScaleX;
+      const dy = (y - calibCy) * calibScaleY;
       const candidate = dx < 0 ? (dy < 0 ? "tl" : "bl") : dy < 0 ? "tr" : "br";
       if (trackerLastZone && candidate !== trackerLastZone) {
         if (Math.abs(dx) < HYSTERESIS_MARGIN || Math.abs(dy) < HYSTERESIS_MARGIN) {

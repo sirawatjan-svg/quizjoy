@@ -1,4 +1,9 @@
-import { startGestureDetection, resetHoldTimer, setCalibration } from "../assets/js/gesture-detection.js";
+import {
+  startGestureDetection,
+  resetHoldTimer,
+  setCalibration,
+  computeCalibrationFromPoints,
+} from "../assets/js/gesture-detection.js";
 import { nextBonusGame, BONUS_RUNNERS } from "../assets/js/bonus-engine.js";
 import { computeGameEndsAt, sortResultsByScore, findRank } from "../assets/js/session-sync.js";
 import {
@@ -149,19 +154,12 @@ function showCalibStep() {
 
 function finishCalibration() {
   calibSkipBtn.style.display = "none";
-  const p = calibPoints;
-  if (p.tl && p.tr && p.bl && p.br) {
-    const leftX = (p.tl.x + p.bl.x) / 2;
-    const rightX = (p.tr.x + p.br.x) / 2;
-    const topY = (p.tl.y + p.tr.y) / 2;
-    const bottomY = (p.bl.y + p.br.y) / 2;
-    const cx = (leftX + rightX) / 2;
-    const cy = (topY + bottomY) / 2;
-    // กันค่าผิดปกติ (เช่น มือหลุดเฟรมกลางคันแล้วจับจุดสุดขอบมาเป็นค่า calibrate) ไม่ให้แย่กว่าค่าเริ่มต้น
-    const safeCx = Number.isFinite(cx) && cx > 0.15 && cx < 0.85 ? cx : 0.5;
-    const safeCy = Number.isFinite(cy) && cy > 0.15 && cy < 0.85 && bottomY > topY ? cy : 0.5;
-    setCalibration(safeCx, safeCy);
-  }
+  // v2: เดิมคำนวณแค่จุดศูนย์กลาง (cx,cy) เอง — ครูส่งภาพวินิจฉัยมาหลายภาพเห็นตรงกันว่าจุดติดตามมือยังอยู่
+  // ใกล้เส้นแบ่งกลางตลอดแม้ calibrate ตั้งใจครบ 4 มุมแล้ว สาเหตุคือไม่เคยปรับ "ระยะที่มือต้องขยับถึงจะข้าม
+  // เส้นแบ่งโซน" เลย ย้ายไปคำนวณที่ computeCalibrationFromPoints() แทน (ดูคอมเมนต์ยาวที่นั่นว่าทำไม) ได้ทั้ง
+  // จุดศูนย์กลางและ scale กลับมาพร้อมกัน
+  const { cx, cy, scaleX, scaleY } = computeCalibrationFromPoints(calibPoints);
+  setCalibration(cx, cy, scaleX, scaleY);
   Object.values(corners).forEach((el) => el.classList.remove("target", "calib-dim"));
   enterLobby();
 }

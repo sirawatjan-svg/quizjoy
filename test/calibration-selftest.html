@@ -25,6 +25,7 @@
       getCalibration,
       resetCalibration,
       createZoneTracker,
+      computeCalibrationFromPoints,
     } from "../assets/js/gesture-detection.js";
 
     const logEl = document.getElementById("log");
@@ -95,6 +96,66 @@
     trackerA.reset();
     check("tracker A: หลัง reset() ชี้จุดใหม่ต้องได้ตาม quadrant ทันที", trackerA.classify(0.7, 0.7), "br");
     check("tracker B: ไม่ถูกกระทบจากการ reset ของ A", trackerB.classify(0.55, 0.7), "br");
+
+    // --- computeCalibrationFromPoints() + scale (gain) ---
+    // ครูส่งภาพวินิจฉัยมาหลายภาพ เห็นจุดติดตามมือค้างใกล้เส้นแบ่งกลางแม้ calibrate ครบ 4 มุมจริงจังแล้ว —
+    // จำลองสถานการณ์นั้น: นักเรียนเอื้อมได้จริงแค่ระยะสั้นๆ (0.1 จากจุดศูนย์กลาง แทนที่จะเป็น 0.25 ตาม
+    // REFERENCE_SPAN) ต้องได้ scale มากกว่า 1 (ขยายผลการขยับจริงให้เด็ดขาดขึ้น)
+    const narrowPoints = {
+      tl: { x: 0.4, y: 0.4 },
+      tr: { x: 0.6, y: 0.4 },
+      bl: { x: 0.4, y: 0.6 },
+      br: { x: 0.6, y: 0.6 },
+    };
+    const narrowCalib = computeCalibrationFromPoints(narrowPoints);
+    check("เอื้อมได้แค่ระยะสั้น (0.1 จากศูนย์กลาง): cx อยู่ตรงกลางจริง", narrowCalib.cx, 0.5);
+    check("เอื้อมได้แค่ระยะสั้น: cy อยู่ตรงกลางจริง", narrowCalib.cy, 0.5);
+    check(
+      `เอื้อมได้แค่ระยะสั้น: scaleX ต้อง > 1 (ขยายให้เด็ดขาดขึ้น) — ได้ ${narrowCalib.scaleX.toFixed(2)}`,
+      narrowCalib.scaleX > 1,
+      true
+    );
+    check(
+      `เอื้อมได้แค่ระยะสั้น: scaleY ต้อง > 1 เช่นกัน — ได้ ${narrowCalib.scaleY.toFixed(2)}`,
+      narrowCalib.scaleY > 1,
+      true
+    );
+
+    // พิสูจน์ว่า scale ที่ได้ "แก้ปัญหาจริง" ไม่ใช่แค่ตัวเลขเฉยๆ — จำลองอาการที่ครูเจอเป๊ะๆ: เริ่มจากมือชี้ br
+    // อยู่ก่อน แล้วขยับไปแค่ 60% ของระยะที่เอื้อมได้จริง (0.06 จาก 0.1) ไปทาง tl — ถ้าไม่มี scale ระยะ 0.06
+    // นี้ยังน้อยกว่า HYSTERESIS_MARGIN (0.07) จะ "ค้าง" อยู่ที่ br เดิมทั้งที่ตั้งใจขยับไปแล้วจริงๆ (คืออาการ
+    // "ชี้กล่องอื่นแล้วแต่ยังค้างโซนเดิม" ที่เห็นในภาพวินิจฉัย) หลัง apply scale (2.5x) ระยะเท่ากันนี้เทียบเท่า
+    // 0.15 ผ่านเกณฑ์ hysteresis สบายๆ ควรสลับเป็น tl ได้จริงตามที่ตั้งใจ
+    resetCalibration();
+    setCalibration(narrowCalib.cx, narrowCalib.cy, narrowCalib.scaleX, narrowCalib.scaleY);
+    resetZoneTracking();
+    pointToZone(0.6, 0.6); // เริ่มที่ br ก่อน (มืออยู่มุมขวาล่างจริงๆ)
+    check(
+      "หลัง apply scale: ขยับแค่ 60% ของระยะที่เอื้อมได้จริงไปทาง tl ต้องสลับโซนได้จริง (ไม่ค้างที่ br เดิม)",
+      pointToZone(0.44, 0.44),
+      "tl"
+    );
+
+    // กรณีเอื้อมได้ปกติ/กว้าง (ตรง REFERENCE_SPAN พอดี) — scale ควรใกล้ 1 ไม่ขยาย/หดผิดปกติ
+    const widePoints = {
+      tl: { x: 0.25, y: 0.25 },
+      tr: { x: 0.75, y: 0.25 },
+      bl: { x: 0.25, y: 0.75 },
+      br: { x: 0.75, y: 0.75 },
+    };
+    const wideCalib = computeCalibrationFromPoints(widePoints);
+    check(
+      `เอื้อมได้กว้างพอดี (0.25 = REFERENCE_SPAN): scaleX ต้องใกล้ 1 — ได้ ${wideCalib.scaleX.toFixed(2)}`,
+      Math.abs(wideCalib.scaleX - 1) < 0.05,
+      true
+    );
+
+    // กรณี calibrate ไม่ครบ 4 มุม (เช่นข้าม/มือหลุดเฟรมกลางคัน) — ต้องได้ค่าเริ่มต้นปลอดภัย ไม่ error/NaN
+    const incomplete = computeCalibrationFromPoints({ tl: { x: 0.3, y: 0.3 } });
+    check("calibrate ไม่ครบ 4 มุม: ได้ค่าเริ่มต้นปลอดภัย cx=0.5", incomplete.cx, 0.5);
+    check("calibrate ไม่ครบ 4 มุม: ได้ค่าเริ่มต้นปลอดภัย scaleX=1", incomplete.scaleX, 1);
+
+    resetCalibration(); // กันเทสอื่นหลังจากนี้ (ถ้ามีไฟล์รวม) ไม่ได้รับ scale ค้างจากเทสนี้
 
     lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
     logEl.innerHTML = lines.join("\n");
