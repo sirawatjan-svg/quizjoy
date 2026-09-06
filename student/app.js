@@ -21,9 +21,11 @@ import {
 } from "../assets/js/firebase-init.js";
 
 const params = new URLSearchParams(location.search);
-const room = params.get("room") || sessionStorage.getItem("quizjoy_room");
-const studentName = sessionStorage.getItem("quizjoy_name");
-const studentId = sessionStorage.getItem("quizjoy_studentId");
+// localStorage แทน sessionStorage เดิม — คู่กับ index.html ที่เปลี่ยนไปเก็บ identity ไว้ข้ามการปิดเปิด
+// แท็บ/แอป (ไม่ใช่แค่รีเฟรชหน้าเดิม) เพื่อรองรับ "หลุดออกจากเกมแล้วกลับมาเล่นต่อได้" ตามที่ครูขอ
+const room = params.get("room") || localStorage.getItem("quizjoy_room");
+const studentName = localStorage.getItem("quizjoy_name");
+const studentId = localStorage.getItem("quizjoy_studentId");
 
 if (!room || !studentName) {
   location.href = "../index.html";

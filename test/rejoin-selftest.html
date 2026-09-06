@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rejoin Matcher Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Rejoin Matcher Self-Test</h1>
+  <p>
+    ทดสอบ findExistingPlayerId() — ตัวจับคู่ "ผู้เล่นเดิม" ตอนเข้าห้องซ้ำ (ครูขอ "อยากให้เด็กที่หลุดออกจาก
+    เกมกลับเข้ามาเล่นต่อได้โดยไม่เสียคะแนนที่ทำไว้") ทดสอบล้วนๆ ไม่แตะ Firestore จริงเลย (ไม่ต้อง login)
+  </p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import { findExistingPlayerId } from "../assets/js/rejoin.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = actual === expected;
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}: ได้ "${actual}" (คาดหวัง "${expected}")`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    const players = [
+      { id: "id-somchai", name: "สมชาย" },
+      { id: "id-somsri", name: "  สมศรี  " }, // จำลองชื่อที่มีช่องว่างหัวท้ายติดมาจาก Firestore จริง
+      { id: "id-john", name: "John" },
+    ];
+
+    check(
+      "เจอชื่อตรงเป๊ะ — คืน id เดิม (rejoin)",
+      findExistingPlayerId(players, "สมชาย"),
+      "id-somchai"
+    );
+
+    check(
+      "ชื่อเดิมมีช่องว่างหัวท้ายติดมาใน Firestore — ยังจับคู่ได้ (ตัดช่องว่างทั้งสองฝั่งก่อนเทียบ)",
+      findExistingPlayerId(players, "สมศรี"),
+      "id-somsri"
+    );
+
+    check(
+      "พิมพ์เข้ามาใหม่ใส่ช่องว่างหัวท้ายเอง — ยังจับคู่ได้เหมือนกัน",
+      findExistingPlayerId(players, "  สมชาย  "),
+      "id-somchai"
+    );
+
+    check(
+      "ตัวพิมพ์ใหญ่/เล็กไม่ตรงกัน (ชื่อภาษาอังกฤษ) — ยังจับคู่ได้ (case-insensitive)",
+      findExistingPlayerId(players, "john"),
+      "id-john"
+    );
+    check(
+      "ตัวพิมพ์ใหญ่ทั้งหมด — ยังจับคู่ได้เหมือนกัน",
+      findExistingPlayerId(players, "JOHN"),
+      "id-john"
+    );
+
+    check(
+      "ชื่อที่ไม่เคยมีในห้องเลย — คืน null (ให้ผู้เรียกสุ่ม id ใหม่เอง = เข้าห้องใหม่จริงๆ)",
+      findExistingPlayerId(players, "คนใหม่ไม่เคยเข้ามาก่อน"),
+      null
+    );
+
+    check("ห้องว่างเปล่า (ยังไม่มีใครเข้าเลย) — คืน null เสมอ", findExistingPlayerId([], "สมชาย"), null);
+
+    check("ชื่อว่างเปล่า (ไม่ควรเกิดจริง เพราะฟอร์มกันไว้แล้ว แต่กันไว้อีกชั้น) — คืน null", findExistingPlayerId(players, ""), null);
+    check("ชื่อเป็นแค่ช่องว่างล้วนๆ — ก็ถือว่าว่างเปล่า คืน null", findExistingPlayerId(players, "   "), null);
+
+    // จำลองเคสจริง: ผู้เล่น 2 คนบังเอิญตั้งชื่อซ้ำกันเป๊ะ — จับคู่กับคนแรกที่เจอในลิสต์เสมอ (พฤติกรรมที่
+    // ตั้งใจ ไม่ใช่บั๊ก — ครูควรบอกเด็กให้ตั้งชื่อไม่ซ้ำกันตอนเข้าห้อง ถ้าไม่อยากเจอเคสนี้)
+    const duplicateNamePlayers = [
+      { id: "id-first", name: "เด็กชายเอ" },
+      { id: "id-second", name: "เด็กชายเอ" },
+    ];
+    check(
+      "ชื่อซ้ำกัน 2 คนในห้องเดียวกัน — จับคู่กับคนแรกที่เจอเสมอ (ยอมรับความเสี่ยงนี้ตามที่คอมเมนต์ใน rejoin.js อธิบายไว้)",
+      findExistingPlayerId(duplicateNamePlayers, "เด็กชายเอ"),
+      "id-first"
+    );
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

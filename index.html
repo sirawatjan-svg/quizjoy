@@ -29,7 +29,8 @@
   </div>
 
   <script type="module">
-    import { db, doc, getDoc } from "./assets/js/firebase-init.js";
+    import { db, doc, getDoc, collection, getDocs } from "./assets/js/firebase-init.js";
+    import { findExistingPlayerId } from "./assets/js/rejoin.js";
 
     // อ่าน room code จาก query string ที่ครูฝังไว้ใน QR เช่น index.html?room=AB12
     const params = new URLSearchParams(location.search);
@@ -38,6 +39,7 @@
     const roomInput = document.getElementById("room-code-input");
     const joinStatus = document.getElementById("join-status");
     const joinBtn = document.getElementById("join-btn");
+    const nameInput = document.getElementById("student-name");
 
     if (room) {
       display.textContent = `ห้อง: ${room}`;
@@ -45,6 +47,14 @@
       // ไม่มีรหัสห้องจาก QR — เปิดช่องให้พิมพ์เองแทน (เช่น ครูบอกรหัสปากเปล่า หรือ QR สแกนไม่ติด)
       display.textContent = "⚠️ ไม่พบรหัสห้องจาก QR — พิมพ์รหัสห้องที่ครูให้มาแทนได้เลย";
       roomInput.style.display = "block";
+    }
+
+    // ถ้าเพิ่งเข้าห้องเดียวกันนี้ไปก่อนหน้า (เช่น หลุด/ปิดแท็บ/แอปโดนปิดพัก แล้วกลับมาใหม่) เติมชื่อเดิม
+    // ให้อัตโนมัติ — สะดวกกว่าให้พิมพ์ใหม่ทุกครั้ง ตัวจับคู่ "รู้จักคนเดิม" จริงๆ อยู่ที่ตอนกด "เข้าห้อง"
+    // ด้านล่าง (เทียบชื่อกับผู้เล่นที่มีอยู่แล้วในห้อง ไม่ใช่แค่ช่วยเติมให้พิมพ์เร็วขึ้นตรงนี้)
+    if (room && localStorage.getItem("quizjoy_room") === room) {
+      const savedName = localStorage.getItem("quizjoy_name");
+      if (savedName) nameInput.value = savedName;
     }
 
     joinBtn.addEventListener("click", async () => {
@@ -75,10 +85,23 @@
           return;
         }
 
-        const studentId = crypto.randomUUID();
-        sessionStorage.setItem("quizjoy_name", name);
-        sessionStorage.setItem("quizjoy_room", roomCode);
-        sessionStorage.setItem("quizjoy_studentId", studentId);
+        // เข้าห้องซ้ำ ("rejoin") — ถ้ามีคนเดิมชื่อนี้อยู่ในห้องนี้แล้ว (เช่น หลุดออกไปแล้วกลับมาเข้าใหม่ อาจ
+        // จะคนละเครื่อง/เบราว์เซอร์ก็ได้ ไม่มีระบบ auth ให้เช็คตัวตนจริงๆ อยู่แล้ว ใช้ชื่อซ้ำเป๊ะเป็นตัวจับคู่
+        // แทน) ให้ "สวมสิทธิ์" กลับเข้าไปเป็นผู้เล่นคนเดิม (ใช้ studentId เดิม) แทนที่จะสร้างคนใหม่คะแนน 0
+        // ซ้ำซ้อน — ตามที่ครูขอ "อยากให้เด็กหลุดออกแล้วกลับเข้ามาเล่นต่อได้โดยไม่เสียคะแนนที่ทำไว้"
+        // (ฝั่ง student/app.js เองรองรับกรณี "เข้าห้องตอนเกมเริ่มไปแล้ว" อยู่แล้วอัตโนมัติ — เห็นว่า session
+        // status เป็น active ก็คำนวณเวลาที่เหลือจริงแล้วพาเข้าเกมทันที ไม่ต้องแก้เพิ่มจุดนั้น)
+        const playersSnap = await getDocs(collection(db, "sessions", roomCode, "players"));
+        const existingPlayers = playersSnap.docs.map((d) => ({ id: d.id, name: d.data().name }));
+        const studentId = findExistingPlayerId(existingPlayers, name) ?? crypto.randomUUID();
+
+        // localStorage แทน sessionStorage เดิม — sessionStorage หายทันทีที่ปิดแท็บ/แอป ทำให้ "หลุดแล้วกลับมา
+        // เข้าใหม่" (ปิดเบราว์เซอร์ทั้งแอปแล้วเปิดใหม่ ไม่ใช่แค่รีเฟรชหน้าเดิม) ต้องพิมพ์ชื่อใหม่เสมอ ทั้งที่
+        // จริงๆ ตัวจับคู่ชื่อด้านบนรองรับ rejoin ได้แล้ว — localStorage อยู่ข้ามการปิดเปิดแอปในเครื่องเดียวกัน
+        // ช่วยให้ชื่อถูกเติมอัตโนมัติ (ดูโค้ดด้านบน) แม้จะปิดแอปไปแล้วก็ตาม
+        localStorage.setItem("quizjoy_name", name);
+        localStorage.setItem("quizjoy_room", roomCode);
+        localStorage.setItem("quizjoy_studentId", studentId);
         location.href = `student/index.html?room=${encodeURIComponent(roomCode)}`;
       } catch (err) {
         joinStatus.textContent = `❌ เชื่อมต่อไม่สำเร็จ: ${err.message}`;
