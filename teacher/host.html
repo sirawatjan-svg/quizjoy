@@ -37,17 +37,61 @@
       /* รายการคำถามให้ใช้พื้นที่กว้างที่เหลือ ไหลเป็น 2 คอลัมน์แทนที่จะเป็นลิสต์ยาวๆ คอลัมน์เดียว */
       #q-pick-list { column-count: 2; column-gap: 16px; }
 
-      /* หลังสร้างห้องแล้ว: QR/รหัสห้อง (แคบ ไม่ต้องยืด) อยู่ซ้าย, ล็อบบี้+คะแนนสด อยู่ขวา
+      /* หลังสร้างห้องแล้ว: QR/รหัสห้อง (แคบ ไม่ต้องยืด) อยู่ซ้าย, ล็อบบี้ อยู่ขวา
          แทนที่จะเรียงต่อกันลงมายาวๆ ทั้งที่มีพื้นที่ข้างๆ ว่างอยู่ */
       .post-create-layout { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
-      .post-create-right { display: flex; flex-direction: column; gap: 20px; }
+
+      /* หน้า "กำลังเล่น" กับ "สรุปผล" เนื้อหาเป็นแค่ลิสต์คะแนน ไม่ได้มีฟอร์ม/คอลัมน์ให้ใช้พื้นที่กว้างแบบ
+         หน้าอื่น — ปล่อยให้กว้างเท่า .host-layout (1300px) เต็มๆ จะดูโหว่ว่างด้านขวามาก จำกัดความกว้าง +
+         จัดกึ่งกลางแทน อ่านง่ายกว่าและดูตั้งใจจัดวางมากกว่าปล่อยชิดซ้ายลอยๆ */
+      #screen-live .panel, #screen-summary .panel { max-width: 640px; margin: 0 auto; }
+      #screen-live h1, #screen-live .room-code-reminder,
+      #screen-summary h1 { max-width: 640px; margin-left: auto; margin-right: auto; }
     }
+
+    /* v2 (ก.ย. 2026): แยกหน้าเดียวที่เดิมโชว์ทุกอย่างรวมกันเป็น "หน้าจอ" แยกทีละขั้นตอนชัดเจน — ครูเทียบกับ
+       โปรเจกต์อื่น (คืนว้าวุ่นในอยุธยา) บอกว่าเดิมดูไม่เป็นมืออาชีพเพราะยัดทุกอย่างไว้หน้าเดียวกัน จริงๆ แล้ว
+       ควรมีขั้นตอนแยกกันชัดเจน: สร้างห้อง → รอนักเรียนเข้าห้อง → กำลังเล่น (โชว์แค่คะแนนสด) → สรุปผล
+       ทีละหน้าจอ ไม่ใช่ค่อยๆ โผล่ปนกันในหน้าเดียวแบบเดิม — ใช้ display:none/block สลับกัน (เหมือนที่ฝั่ง
+       นักเรียนทำอยู่แล้วกับ setup-screen/quiz-stage/end-screen) ไม่ใช่คนละไฟล์ เพื่อไม่ต้องแตะ auth-guard/
+       state จัดการ session ที่ผูกกับตัวแปรในไฟล์นี้อยู่แล้ว */
+    .host-screen { animation: host-screen-in 0.35s ease; }
+    @keyframes host-screen-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .host-screen h1 { margin-bottom: 20px; }
+
+    /* ป้ายรหัสห้องเล็กๆ ค้างไว้บนหน้าจอ "กำลังเล่น" — ตอนแรกตัดรหัสห้อง/QR ออกไปเลยเพื่อให้จอสะอาดแค่คะแนน
+       สดล้วนๆ ตามที่ครูขอ แต่เก็บไว้นิดหน่อยเผื่อมีนักเรียนหลุดออกกลางเกมแล้วต้องขอรหัสห้องเพื่อกลับเข้ามาใหม่
+       (ฟีเจอร์ "เข้าห้องต่อ" ที่เพิ่งทำ) ไม่ต้องสลับกลับไปหน้าล็อบบี้เพื่อดูรหัส */
+    .room-code-reminder {
+      display: inline-block;
+      background: var(--panel);
+      border-radius: 999px;
+      padding: 6px 16px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+      color: var(--muted);
+    }
+    .room-code-reminder strong { color: var(--fg); letter-spacing: 3px; }
+
+    /* หน้าสรุปผล — โพเดียม 3 อันดับแรกตัวใหญ่เด่นกว่ารายชื่อคะแนนสดปกติ แยกความรู้สึก "จบแล้ว/ประกาศผล"
+       ออกจาก "กำลังเล่นอยู่" ให้ชัดเจน ไม่ใช่แค่เปลี่ยนหัวข้อบนลิสต์เดิมแบบก่อนหน้านี้ */
+    .summary-podium { display: flex; justify-content: center; align-items: flex-end; gap: 12px; margin: 8px 0 24px; }
+    .summary-podium-item { text-align: center; flex: 1; max-width: 150px; }
+    .summary-podium-item .medal-badge { width: 40px; height: 40px; font-size: 1.15rem; margin: 0 0 8px; }
+    .summary-podium-item .name { font-weight: 700; word-break: break-word; }
+    .summary-podium-item .score { color: var(--accent); font-weight: 800; font-size: 1.1rem; }
+    .summary-podium-item.rank-1 { order: 2; }
+    .summary-podium-item.rank-2 { order: 1; padding-bottom: 14px; }
+    .summary-podium-item.rank-3 { order: 3; padding-bottom: 22px; }
   </style>
 </head>
 <body>
   <div class="host-layout" id="app-content" style="display:none;">
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
-    <h1>🚀 สร้างห้อง / เริ่มเกม</h1>
 
     <div class="panel" id="localhost-warning" style="display:none; border: 2px solid var(--wrong); background: rgba(239,68,68,0.1);">
       ⚠️ <strong>กำลังเปิดหน้านี้จากเครื่องทดสอบ (localhost)</strong> — QR ที่จะสร้างจะใช้ไม่ได้กับมือถือเครื่องอื่น
@@ -56,52 +100,58 @@
       แทนก่อนสร้างห้องสำหรับเล่นจริงในห้องเรียน
     </div>
 
-    <div class="panel" id="setup-panel">
-      <!-- ฟอร์มชื่อ/เวลา จำกัดความกว้างไว้บนจอกว้าง (ดู .field-group ใน CSS) ไม่งั้นช่องกรอกจะยืด
-           เต็ม 1100px จนดูแปลกๆ ส่วนรายการคำถามด้านล่างปล่อยให้ใช้เต็มความกว้างได้เลย -->
-      <div class="field-group">
-        <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
-        <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
+    <!-- ============ หน้าจอ 1/4: สร้างห้อง ============ -->
+    <section class="host-screen" id="screen-create">
+      <h1>🚀 สร้างห้อง</h1>
+      <div class="panel" id="setup-panel">
+        <!-- ฟอร์มชื่อ/เวลา จำกัดความกว้างไว้บนจอกว้าง (ดู .field-group ใน CSS) ไม่งั้นช่องกรอกจะยืด
+             เต็ม 1100px จนดูแปลกๆ ส่วนรายการคำถามด้านล่างปล่อยให้ใช้เต็มความกว้างได้เลย -->
+        <div class="field-group">
+          <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
+          <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
 
-        <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
-        <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
-        <p style="color:var(--muted); font-size:0.8rem;">
-          เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
-        </p>
-      </div>
+          <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
+          <input id="duration-input" type="number" min="1" max="60" value="5" style="width:100%; margin-bottom:4px;" />
+          <p style="color:var(--muted); font-size:0.8rem;">
+            เกมจะจบเมื่อหมดเวลา ไม่ใช่เมื่อครบจำนวนข้อ — ถ้านักเรียนตอบครบชุดคำถามก่อนหมดเวลา ระบบจะวนกลับไปข้อแรกให้เล่นต่อ
+          </p>
+        </div>
 
-      <label style="display:block; margin: 16px 0 4px;">เลือกคำถามจากคลัง</label>
-      <div style="margin-bottom:8px;">
-        <button id="select-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px;">เลือกทั้งหมด</button>
-        <button id="clear-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px; background:#334155;">ล้างที่เลือก</button>
-      </div>
-      <div id="q-pick-list">
-        <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
-      </div>
+        <label style="display:block; margin: 16px 0 4px;">เลือกคำถามจากคลัง</label>
+        <div style="margin-bottom:8px;">
+          <button id="select-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px;">เลือกทั้งหมด</button>
+          <button id="clear-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px; background:#334155;">ล้างที่เลือก</button>
+        </div>
+        <div id="q-pick-list">
+          <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
+        </div>
 
-      <div class="field-group">
-        <button id="publish-btn" style="width:100%; margin-top:16px;">🚀 สร้างห้องและเริ่มเกม</button>
-        <p id="publish-status" style="color:var(--muted); font-size:0.85rem;"></p>
+        <div class="field-group">
+          <button id="publish-btn" style="width:100%; margin-top:16px;">🚀 สร้างห้องและเริ่มเกม</button>
+          <p id="publish-status" style="color:var(--muted); font-size:0.85rem;"></p>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- หลังสร้างห้องแล้ว: QR/รหัสห้อง อยู่คอลัมน์ซ้าย (แคบกว่า ไม่ต้องยืดเต็ม), ล็อบบี้+คะแนนสด
-         อยู่คอลัมน์ขวา — จัดเป็น 2 คอลัมน์เฉพาะจอกว้าง (ดู .post-create-layout ใน CSS) จอมือถือ
-         ยังเรียงต่อกันแนวตั้งเหมือนเดิมทุกอย่าง ไม่กระทบ -->
-    <div class="post-create-layout">
-      <div class="panel" id="qr-panel" style="display:none;">
-        <h3 style="text-align:center;">ห้องพร้อมแล้ว!</h3>
-        <div class="room-code-big sticker-text" id="room-code-out"></div>
-        <div id="qr-code"></div>
-        <p style="color:var(--muted); font-size:0.85rem; text-align:center;">
-          ให้นักเรียนสแกน QR หรือเข้า <span id="join-url-out"></span> แล้วกรอกรหัสห้องด้านบน
-        </p>
-      </div>
+    <!-- ============ หน้าจอ 2/4: รอนักเรียนเข้าห้อง (QR + รายชื่อที่เข้ามาแล้ว) ============ -->
+    <!-- หลังสร้างห้องแล้ว: QR/รหัสห้อง อยู่คอลัมน์ซ้าย (แคบกว่า ไม่ต้องยืดเต็ม), ล็อบบี้ อยู่คอลัมน์ขวา
+         จัดเป็น 2 คอลัมน์เฉพาะจอกว้าง (ดู .post-create-layout ใน CSS) จอมือถือยังเรียงต่อกันแนวตั้ง
+         เหมือนเดิมทุกอย่าง ไม่กระทบ -->
+    <section class="host-screen" id="screen-lobby" style="display:none;">
+      <h1>👥 รอนักเรียนเข้าห้อง</h1>
+      <div class="post-create-layout">
+        <div class="panel" id="qr-panel">
+          <h3 style="text-align:center;">ห้องพร้อมแล้ว!</h3>
+          <div class="room-code-big sticker-text" id="room-code-out"></div>
+          <div id="qr-code"></div>
+          <p style="color:var(--muted); font-size:0.85rem; text-align:center;">
+            ให้นักเรียนสแกน QR หรือเข้า <span id="join-url-out"></span> แล้วกรอกรหัสห้องด้านบน
+          </p>
+        </div>
 
-      <div class="post-create-right">
         <!-- ล็อบบี้: รอผู้เล่นเข้าห้อง แล้วครูกดเริ่มเองให้ทุกคนเริ่มพร้อมกัน (เดิมแต่ละคนกดเริ่มเอง
              นาฬิกาต่างคนต่างเดิน ไม่ซิงค์กันเลย) -->
-        <div class="panel" id="lobby-panel" style="display:none;">
+        <div class="panel" id="lobby-panel">
           <h3>👥 ผู้เล่นที่เข้าห้องแล้ว (<span id="lobby-count">0</span>)</h3>
           <ul id="lobby-player-list" style="list-style:none; padding:0; margin:0 0 12px;"></ul>
           <button id="start-game-btn" style="width:100%;">🚀 เริ่มเกมพร้อมกัน</button>
@@ -112,13 +162,29 @@
           <button id="bgm-toggle-btn" type="button" style="width:100%; margin-top:8px; background:#334155; font-size:0.85rem;">🔊 เพลงประกอบ: ปิดอยู่</button>
           <audio id="bgm" loop preload="auto" src="../assets/audio/bgm-quiz.mp3"></audio>
         </div>
-
-        <div class="panel" id="live-scores" style="display:none;">
-          <h3 id="scores-heading">คะแนนสด</h3>
-          <ul id="live-score-list" style="list-style:none; padding:0; margin:0;"></ul>
-        </div>
       </div>
-    </div>
+    </section>
+
+    <!-- ============ หน้าจอ 3/4: กำลังเล่น (โชว์แค่คะแนนสดล้วนๆ ตามที่ครูขอ ไม่ปนกับล็อบบี้/ฟอร์มอีกแล้ว) ============ -->
+    <section class="host-screen" id="screen-live" style="display:none;">
+      <h1>🎯 กำลังเล่น</h1>
+      <!-- รหัสห้องแบบย่อ เผื่อมีนักเรียนหลุดออกกลางเกมแล้วต้องขอรหัสเพื่อ "เข้าห้องต่อ" (ฟีเจอร์ที่เพิ่งทำ)
+           ไม่ต้องสลับกลับไปหน้าล็อบบี้เพื่อดู QR เต็มๆ อีกที -->
+      <div class="room-code-reminder">รหัสห้อง: <strong id="room-code-reminder-out"></strong></div>
+      <div class="panel" id="live-scores">
+        <h3>คะแนนสด</h3>
+        <ul id="live-score-list" style="list-style:none; padding:0; margin:0;"></ul>
+      </div>
+    </section>
+
+    <!-- ============ หน้าจอ 4/4: สรุปผล (โพเดียม 3 อันดับแรก + รายชื่อทั้งหมด) ============ -->
+    <section class="host-screen" id="screen-summary" style="display:none;">
+      <h1>🏆 สรุปผล</h1>
+      <div class="panel" id="summary-panel">
+        <div class="summary-podium" id="summary-podium"></div>
+        <ul id="summary-score-list" style="list-style:none; padding:0; margin:0;"></ul>
+      </div>
+    </section>
   </div>
 
   <script type="module">
@@ -144,19 +210,25 @@
     });
 
     function init() {
+    // --- 4 หน้าจอแยกทีละขั้นตอน (v2) — โชว์ทีละหน้าจอเดียวเท่านั้น สลับด้วย showScreen() ---
+    const SCREENS = ["screen-create", "screen-lobby", "screen-live", "screen-summary"];
+    function showScreen(id) {
+      SCREENS.forEach((s) => {
+        document.getElementById(s).style.display = s === id ? "block" : "none";
+      });
+    }
+
     const qPickList = document.getElementById("q-pick-list");
     const selectAllBtn = document.getElementById("select-all-btn");
     const clearAllBtn = document.getElementById("clear-all-btn");
     const publishBtn = document.getElementById("publish-btn");
     const publishStatus = document.getElementById("publish-status");
-    const setupPanel = document.getElementById("setup-panel");
-    const qrPanel = document.getElementById("qr-panel");
-    const liveScoresPanel = document.getElementById("live-scores");
-    const scoresHeading = document.getElementById("scores-heading");
     const roomCodeOut = document.getElementById("room-code-out");
+    const roomCodeReminderOut = document.getElementById("room-code-reminder-out");
     const joinUrlOut = document.getElementById("join-url-out");
     const liveScoreList = document.getElementById("live-score-list");
-    const lobbyPanel = document.getElementById("lobby-panel");
+    const summaryPodium = document.getElementById("summary-podium");
+    const summaryScoreList = document.getElementById("summary-score-list");
     const lobbyCountEl = document.getElementById("lobby-count");
     const lobbyPlayerListEl = document.getElementById("lobby-player-list");
     const startGameBtn = document.getElementById("start-game-btn");
@@ -242,9 +314,11 @@
       return code;
     }
 
-    // ดึงมาแสดงใหม่ทั้งจาก onSnapshot ของ results (คะแนนเปลี่ยน) และจาก podium watcher (เวลาหมด
-    // เปลี่ยนเป็นโหมดโพเดียม) — แยกฟังก์ชัน render ออกมาต่างหากเพื่อไม่ให้ต้อง query ซ้ำสองที่
-    function renderScores() {
+    // v2: แยกเป็น 2 ฟังก์ชัน render ชัดเจนตามหน้าจอ — เดิมใช้ renderScores() ตัวเดียวทั้งตอนเล่นอยู่และตอน
+    // จบเกม (แค่เปลี่ยนหัวข้อ + ใส่เหรียญ 3 อันดับแรกในลิสต์เดิม) ตอนนี้แยกเป็นคนละหน้าจอจริง (สอดคล้องกับ
+    // ฝั่งนักเรียนที่ก็มีหน้า end-screen แยกจาก quiz-stage เหมือนกัน) — คะแนนสด (screen-live) เรียบง่าย
+    // แค่อันดับ+ชื่อ+คะแนน ส่วนสรุปผล (screen-summary) มีโพเดียม 3 อันดับแรกเด่นๆ แยกต่างหาก
+    function renderLiveScores() {
       const sorted = sortResultsByScore(latestResults);
       if (sorted.length === 0) {
         liveScoreList.innerHTML = '<li style="color:var(--muted)">ยังไม่มีใครตอบ...</li>';
@@ -252,25 +326,49 @@
       }
       liveScoreList.innerHTML = sorted
         .map((r, i) => {
-          const label =
-            gameEndedFlag && i < 3 ? `<span class="medal-badge medal-${i + 1}">${i + 1}</span>` : `${i + 1}.`;
           const total = (r.score ?? 0) + (r.bonusScore ?? 0);
-          return `<li>${label} ${r.name ?? "?"} — ${total} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`;
+          return `<li>${i + 1}. ${r.name ?? "?"} — ${total} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`;
+        })
+        .join("");
+    }
+
+    function renderSummary() {
+      const sorted = sortResultsByScore(latestResults);
+      const top3 = sorted.slice(0, 3);
+      summaryPodium.innerHTML = top3
+        .map((r, i) => {
+          const total = (r.score ?? 0) + (r.bonusScore ?? 0);
+          return `
+        <div class="summary-podium-item rank-${i + 1}">
+          <div class="medal-badge medal-${i + 1}">${i + 1}</div>
+          <div class="name">${r.name ?? "?"}</div>
+          <div class="score">${total} คะแนน</div>
+        </div>`;
+        })
+        .join("");
+
+      if (sorted.length === 0) {
+        summaryScoreList.innerHTML = '<li style="color:var(--muted)">ไม่มีใครตอบคำถามเลย</li>';
+        return;
+      }
+      summaryScoreList.innerHTML = sorted
+        .map((r, i) => {
+          const total = (r.score ?? 0) + (r.bonusScore ?? 0);
+          return `<li>${i + 1}. ${r.name ?? "?"} — ${total} คะแนน (คำถาม ${r.score ?? 0} + โบนัส ${r.bonusScore ?? 0})</li>`;
         })
         .join("");
     }
 
     function watchLiveScores(roomCode) {
-      liveScoresPanel.style.display = "block";
       onSnapshot(collection(db, "sessions", roomCode, "results"), (snap) => {
         latestResults = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        renderScores();
+        if (gameEndedFlag) renderSummary();
+        else renderLiveScores();
       });
     }
 
     // ล็อบบี้: โชว์รายชื่อผู้เล่นที่เข้าห้องแล้วแบบสด ระหว่างรอครูกดเริ่ม
     function watchLobbyPlayers(roomCode) {
-      lobbyPanel.style.display = "block";
       onSnapshot(collection(db, "sessions", roomCode, "players"), (snap) => {
         const players = snap.docs.map((d) => d.data());
         lobbyCountEl.textContent = players.length;
@@ -293,8 +391,8 @@
         podiumInterval = setInterval(() => {
           if (gameEndedFlag || Date.now() < gameEndsAtMs) return;
           gameEndedFlag = true;
-          scoresHeading.textContent = "🏆 ผลการแข่งขัน (จบเกมแล้ว)";
-          renderScores();
+          renderSummary();
+          showScreen("screen-summary");
           fadeOutBgm();
           clearInterval(podiumInterval);
         }, 1000);
@@ -339,9 +437,9 @@
           createdAt: serverTimestamp(),
         });
 
-        setupPanel.style.display = "none";
-        qrPanel.style.display = "block";
+        showScreen("screen-lobby");
         roomCodeOut.textContent = roomCode;
+        roomCodeReminderOut.textContent = roomCode;
         const joinUrl = `${location.origin}${location.pathname.replace(
           "teacher/host.html",
           "index.html"
@@ -363,6 +461,7 @@
               startedAt: serverTimestamp(),
             });
             lobbyStatusEl.textContent = "✅ เริ่มเกมแล้ว! นักเรียนทุกคนเริ่มพร้อมกัน";
+            showScreen("screen-live");
             watchLiveScores(roomCode);
           } catch (err) {
             lobbyStatusEl.textContent = `❌ เริ่มเกมไม่สำเร็จ: ${err.message}`;
