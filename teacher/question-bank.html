@@ -37,6 +37,10 @@
     <h1>📚 คลังข้อสอบ</h1>
 
     <div class="bank-content">
+      <!-- ครอบ q-form + bulk-panel ไว้ในคอลัมน์เดียวกัน (ซ้าย) ด้วยกัน — .bank-content เป็น grid 2 คอลัมน์
+           ถ้าไม่ครอบไว้ ลูกตัวที่ 3 (bulk-panel) จะไหลไปแทรกคอลัมน์ขวาแทนตาม grid auto-flow ปกติ ดันรายการ
+           คำถามในคลังตกไปแถวที่ 2 คอลัมน์ซ้ายผิดที่ไปเลย (เจอบั๊กนี้จริงตอนทดสอบด้วยตา ก่อน commit) -->
+      <div class="bank-left-column">
       <div class="panel q-form">
         <h3 id="form-heading">เพิ่มคำถามใหม่</h3>
         <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
@@ -61,6 +65,31 @@
         <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
       </div>
 
+      <!-- นำเข้าหลายข้อพร้อมกัน — เดิมพิมพ์ได้ทีละข้อผ่านฟอร์มด้านบนเท่านั้น ถ้าครูเตรียมคำถามไว้ล่วงหน้า
+           เป็นสิบๆ ข้อ (เช่นใน Google Docs/Sheets) จะช้ามากถ้าต้องพิมพ์ทีละข้อ ยุบไว้เป็น disclosure ปกติ
+           ไม่ให้หน้าตาดูรกกว่าเดิมสำหรับครูที่ไม่ได้ใช้ฟีเจอร์นี้ -->
+      <div class="panel" id="bulk-panel" style="margin-top:16px;">
+        <button id="bulk-toggle-btn" type="button" style="width:100%; background:#334155;">
+          📋 นำเข้าหลายข้อพร้อมกัน
+        </button>
+        <div id="bulk-body" style="display:none; margin-top:12px;">
+          <p style="color:var(--muted); font-size:0.78rem; line-height:1.5;">
+            1 บรรทัดต่อ 1 คำถาม คั่นแต่ละช่องด้วย <code>|</code> ตามลำดับนี้:<br />
+            <code style="word-break:break-all;">วิชา|คำถาม|ตัวเลือกA|ตัวเลือกB|ตัวเลือกC|ตัวเลือกD|เฉลย(A/B/C/D)|คำอธิบาย(เว้นว่างได้)</code><br />
+            บรรทัดว่างหรือขึ้นต้นด้วย <code>#</code> จะถูกข้ามไป (ใช้เขียนหมายเหตุได้)
+          </p>
+          <textarea
+            id="bulk-text"
+            rows="6"
+            placeholder="สังคม ม.2 - อยุธยา|กรุงศรีอยุธยาก่อตั้ง พ.ศ. ใด|1893|1350|1767|2100|B|"
+            style="width:100%; margin-bottom:8px; font-family:monospace; font-size:0.78rem;"
+          ></textarea>
+          <button id="bulk-import-btn" style="width:100%;">นำเข้าทั้งหมด</button>
+          <div id="bulk-result" style="margin-top:8px; font-size:0.82rem;"></div>
+        </div>
+      </div>
+      </div> <!-- ปิด .bank-left-column -->
+
       <div>
         <h3>คำถามในคลัง</h3>
         <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
@@ -83,6 +112,7 @@
       serverTimestamp,
     } from "../assets/js/firebase-init.js";
     import { requireAuth } from "../assets/js/auth-guard.js";
+    import { parseBulkQuestions } from "../assets/js/bulk-import.js";
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
@@ -106,6 +136,11 @@
     const saveStatus = document.getElementById("save-status");
     const listEl = document.getElementById("q-list");
     const searchBox = document.getElementById("search-box");
+    const bulkToggleBtn = document.getElementById("bulk-toggle-btn");
+    const bulkBody = document.getElementById("bulk-body");
+    const bulkText = document.getElementById("bulk-text");
+    const bulkImportBtn = document.getElementById("bulk-import-btn");
+    const bulkResult = document.getElementById("bulk-result");
 
     let allQuestions = []; // แคชล่าสุดจาก onSnapshot ไว้ filter ฝั่ง client
     // ไม่มี id = กำลังเพิ่มคำถามใหม่ (โหมดปกติ), มี id = กำลังแก้ไขคำถามนั้นอยู่ (กด "แก้ไข" จากรายการ)
@@ -209,6 +244,61 @@
     }
 
     cancelEditBtn.addEventListener("click", () => cancelEdit());
+
+    bulkToggleBtn.addEventListener("click", () => {
+      bulkBody.style.display = bulkBody.style.display === "none" ? "block" : "none";
+    });
+
+    // นำเข้าหลายข้อพร้อมกัน — parseBulkQuestions() (assets/js/bulk-import.js) แยก parsing ล้วนๆ ออกไปแล้ว
+    // (ทดสอบเองแยกต่างหากได้ที่ test/bulk-import-selftest.html) ที่นี่แค่เรียกใช้แล้วยิง addDoc ทีละข้อ —
+    // ใช้ลูป sequential ธรรมดา ไม่ใช่ Firestore batch write เพราะจำนวนคำถามต่อครั้งในคลังขนาดนี้ (ไม่กี่สิบ
+    // ข้อ) ไม่คุ้มความซับซ้อนเพิ่ม แถมได้ผลลัพธ์ "สำเร็จบางข้อ พลาดบางข้อ" แยกกันชัดเจนกว่า batch (batch ปกติ
+    // เป็น all-or-nothing)
+    bulkImportBtn.addEventListener("click", async () => {
+      const { valid, errors } = parseBulkQuestions(bulkText.value);
+      if (valid.length === 0 && errors.length === 0) {
+        bulkResult.innerHTML = '<p style="color:var(--muted)">ยังไม่ได้วางข้อความอะไรเลย</p>';
+        return;
+      }
+
+      bulkImportBtn.disabled = true;
+      bulkResult.innerHTML = `<p style="color:var(--muted)">กำลังนำเข้า ${valid.length} ข้อ...</p>`;
+
+      let successCount = 0;
+      const writeErrors = [];
+      for (const q of valid) {
+        try {
+          await addDoc(collection(db, "questionBank"), { ...q, createdAt: serverTimestamp() });
+          successCount += 1;
+        } catch (err) {
+          writeErrors.push(err.message);
+        }
+      }
+
+      const parts = [];
+      if (successCount > 0) {
+        parts.push(`<p style="color:var(--correct); margin:4px 0;">✅ นำเข้าสำเร็จ ${successCount} ข้อ</p>`);
+      }
+      if (errors.length > 0) {
+        parts.push(
+          `<p style="color:var(--wrong); margin:4px 0;">⚠️ ข้ามไป ${errors.length} บรรทัดที่รูปแบบผิด (แก้ในกล่องข้อความแล้วกดนำเข้าใหม่ได้):</p>` +
+            `<ul style="margin:2px 0 4px; padding-left:20px; color:var(--wrong); font-size:0.78rem;">` +
+            errors.map((e) => `<li>บรรทัดที่ ${e.line}: ${e.message}</li>`).join("") +
+            `</ul>`
+        );
+      }
+      if (writeErrors.length > 0) {
+        parts.push(
+          `<p style="color:var(--wrong); margin:4px 0;">❌ บันทึกไม่สำเร็จ ${writeErrors.length} ข้อ: ${writeErrors.join(", ")}</p>`
+        );
+      }
+      bulkResult.innerHTML = parts.join("");
+
+      // เคลียร์กล่องข้อความเฉพาะตอนนำเข้าสำเร็จอย่างน้อย 1 ข้อ — ถ้าพลาดหมดทุกบรรทัดให้ข้อความเดิมค้างไว้
+      // จะได้แก้ไขแล้วลองนำเข้าใหม่ได้เลย ไม่ต้องพิมพ์ใหม่ทั้งหมด
+      if (successCount > 0) bulkText.value = "";
+      bulkImportBtn.disabled = false;
+    });
 
     onSnapshot(
       collection(db, "questionBank"),

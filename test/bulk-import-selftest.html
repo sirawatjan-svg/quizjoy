@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bulk Import Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Bulk Import Self-Test</h1>
+  <p>
+    ทดสอบ parseBulkQuestions() — ตัวแปลงข้อความหลายบรรทัด (คั่นด้วย |) เป็นคำถามหลายข้อพร้อมกัน สำหรับหน้า
+    คลังข้อสอบ ทดสอบล้วนๆ ไม่แตะ Firestore จริงเลย (ไม่ต้อง login)
+  </p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import { parseBulkQuestions } from "../assets/js/bulk-import.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}${ok ? "" : `: ได้ ${JSON.stringify(actual)} (คาดหวัง ${JSON.stringify(expected)})`}`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    // เคสพื้นฐาน: 2 ข้อถูกต้องครบ
+    {
+      const input = [
+        "สังคม ม.2 - อยุธยา|กรุงศรีอยุธยาก่อตั้ง พ.ศ. ใด|1893|1350|1767|2100|B|สมเด็จพระรามาธิบดีที่ 1 สถาปนา",
+        "สังคม ม.2 - อยุธยา|เมืองหลวงเก่าคือ|เชียงใหม่|อยุธยา|สุโขทัย|ธนบุรี|B|",
+      ].join("\n");
+      const { valid, errors } = parseBulkQuestions(input);
+      check("2 บรรทัดถูกต้อง — ไม่มี error เลย", errors.length, 0);
+      check("2 บรรทัดถูกต้อง — ได้คำถามครบ 2 ข้อ", valid.length, 2);
+      check("ข้อ 1: วิชาถูกต้อง", valid[0].subject, "สังคม ม.2 - อยุธยา");
+      check("ข้อ 1: เฉลย B แปลงเป็นโซน tr ถูกต้อง (A=tl,B=tr,C=bl,D=br)", valid[0].correctZone, "tr");
+      check("ข้อ 1: ตัวเลือกแมปช่องถูกต้อง", valid[0].options, { tl: "1893", tr: "1350", bl: "1767", br: "2100" });
+      check("ข้อ 2: ไม่ใส่คำอธิบาย ต้องเป็นค่าว่างเปล่า ไม่ใช่ undefined", valid[1].explanation, "");
+    }
+
+    // บรรทัดว่าง/หมายเหตุ (#) ต้องข้ามเงียบๆ ไม่นับเป็น error
+    {
+      const input = [
+        "# นี่คือหัวตาราง ไม่ใช่คำถามจริง",
+        "",
+        "สังคม|คำถามทดสอบ|A|B|C|D|A|",
+        "",
+      ].join("\n");
+      const { valid, errors } = parseBulkQuestions(input);
+      check("บรรทัดว่าง/# ถูกข้ามไม่นับ error", errors.length, 0);
+      check("บรรทัดว่าง/# ถูกข้ามแต่ยังนำเข้าข้อจริงได้ 1 ข้อ", valid.length, 1);
+    }
+
+    // ผิดจำนวนช่อง (ลืมใส่ | คั่นบางช่อง)
+    {
+      const { valid, errors } = parseBulkQuestions("สังคม|คำถาม|A|B|C|D"); // ขาดช่องเฉลยไปเลย (6 ช่อง)
+      check("ช่องไม่ครบ (6 แทนที่จะเป็น 7-8) — ไม่ผ่าน ไม่มี valid เลย", valid.length, 0);
+      check("ช่องไม่ครบ — ได้ error 1 รายการ ระบุเลขบรรทัดถูกต้อง", errors.length, 1);
+      check("error ระบุเลขบรรทัดที่ 1 ถูกต้อง", errors[0].line, 1);
+    }
+
+    // เฉลยผิด (ไม่ใช่ A/B/C/D)
+    {
+      const { valid, errors } = parseBulkQuestions("สังคม|คำถาม|A|B|C|D|X|");
+      check("เฉลยไม่ใช่ A-D (พิมพ์ X มา) — ไม่ผ่าน", valid.length, 0);
+      check("เฉลยผิด — ได้ error พร้อมข้อความอธิบายชัดเจน", errors.length, 1);
+    }
+
+    // เฉลยตัวพิมพ์เล็ก/มีช่องว่างรอบๆ ก็ยังต้องใช้ได้ (ใจดีกับการพิมพ์ของครู)
+    {
+      const { valid } = parseBulkQuestions("สังคม|คำถาม| A | B | C | D | c |คำอธิบาย");
+      check("เฉลยตัวพิมพ์เล็ก 'c' ยังแปลงเป็น bl ได้ถูกต้อง", valid[0]?.correctZone, "bl");
+      check("ช่องว่างรอบๆ ตัวเลือกถูกตัดออกหมด (trim)", valid[0]?.options.tl, "A");
+    }
+
+    // ตัวเลือกว่างเปล่า (เว้นช่องแต่ไม่ใส่ข้อความ)
+    {
+      const { valid, errors } = parseBulkQuestions("สังคม|คำถาม|A||C|D|A|");
+      check("ตัวเลือก B ว่างเปล่า — ไม่ผ่าน", valid.length, 0);
+      check("ตัวเลือกว่างเปล่า — ได้ error ชัดเจน", errors.length, 1);
+    }
+
+    // นำเข้าก้อนใหญ่ที่มีทั้งบรรทัดถูกและผิดปนกัน — ต้องได้ทั้งสองส่วนแยกกันถูกต้อง ไม่ใช่ all-or-nothing
+    {
+      const input = [
+        "สังคม|ข้อที่ถูก 1|A|B|C|D|A|",
+        "สังคม|ข้อที่ผิด (เฉลยมั่ว)|A|B|C|D|Z|",
+        "สังคม|ข้อที่ถูก 2|A|B|C|D|D|",
+      ].join("\n");
+      const { valid, errors } = parseBulkQuestions(input);
+      check("ก้อนใหญ่ปนกัน: ได้ข้อที่ถูก 2 ข้อ (ไม่ล้มทั้งก้อนเพราะมีข้อผิดปนอยู่)", valid.length, 2);
+      check("ก้อนใหญ่ปนกัน: ได้ error เฉพาะบรรทัดที่ผิดจริง 1 รายการ", errors.length, 1);
+      check("ก้อนใหญ่ปนกัน: error ระบุเลขบรรทัดที่ 2 ถูกต้อง (นับรวมบรรทัดที่ถูกด้วย)", errors[0].line, 2);
+    }
+
+    // ข้อความว่างเปล่าทั้งก้อน — ไม่ error ไม่ crash แค่ไม่ได้อะไรเลย
+    check("ข้อความว่างเปล่าทั้งก้อน — ไม่มี valid ไม่มี error", parseBulkQuestions(""), { valid: [], errors: [] });
+    check("undefined/ไม่ส่งอะไรมาเลย — ไม่ crash", parseBulkQuestions(undefined), { valid: [], errors: [] });
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>
