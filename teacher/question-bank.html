@@ -8,9 +8,13 @@
   <style>
     .bank-layout { max-width: 720px; margin: 0 auto; padding: 24px; text-align: left; }
     .q-form input, .q-form textarea { width: 100%; margin-bottom: 8px; }
-    .q-list-item { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+    .q-list-item { background: var(--panel); border-radius: 12px; padding: 12px; margin-bottom: 8px; border: 2px solid transparent; }
     .q-list-item .row { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-    .q-list-item .del-btn { background: var(--wrong); flex-shrink:0; padding:6px 12px; font-size:0.8rem; }
+    .q-list-item .del-btn, .q-list-item .edit-btn { flex-shrink:0; padding:6px 12px; font-size:0.8rem; }
+    .q-list-item .del-btn { background: var(--wrong); }
+    .q-list-item .edit-btn { background: var(--accent); }
+    /* กล่องที่กำลังแก้ไขอยู่ตอนนี้ (ฟอร์มซ้ายเติมข้อมูลของมันอยู่) ไฮไลต์กรอบให้เห็นชัดว่าแก้ข้อไหนอยู่ */
+    .q-list-item.editing { border-color: var(--accent); }
     .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; margin-right:6px; }
     .opt-line { color: var(--muted); font-size: 0.85rem; margin: 2px 0; }
     .opt-line.correct { color: var(--correct); font-weight: 600; }
@@ -34,7 +38,7 @@
 
     <div class="bank-content">
       <div class="panel q-form">
-        <h3>เพิ่มคำถามใหม่</h3>
+        <h3 id="form-heading">เพิ่มคำถามใหม่</h3>
         <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
         <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
         <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
@@ -49,6 +53,11 @@
         </select>
         <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
         <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
+        <!-- โชว์เฉพาะตอนกำลังแก้ไขคำถามเดิม (กด "แก้ไข" จากรายการทางขวา) — กดยกเลิกกลับไปโหมด
+             "เพิ่มคำถามใหม่" ตามปกติ ไม่บันทึกอะไรทับของเดิม -->
+        <button id="cancel-edit-btn" type="button" style="width:100%; margin-top:6px; background:#334155; display:none;">
+          ยกเลิกการแก้ไข
+        </button>
         <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
       </div>
 
@@ -56,9 +65,7 @@
         <h3>คำถามในคลัง</h3>
         <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
         <div id="q-list">
-          <p style="color:var(--muted)">
-            ⚠️ ยังไม่ได้เชื่อมต่อ Firestore — จะแสดงรายการคำถามที่นี่หลังใส่ Firebase config แล้ว
-          </p>
+          <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
         </div>
       </div>
     </div>
@@ -69,6 +76,7 @@
       db,
       collection,
       addDoc,
+      updateDoc,
       deleteDoc,
       doc,
       onSnapshot,
@@ -93,11 +101,15 @@
     const correctEl = document.getElementById("q-correct");
     const explainEl = document.getElementById("q-explain");
     const saveBtn = document.getElementById("save-btn");
+    const cancelEditBtn = document.getElementById("cancel-edit-btn");
+    const formHeading = document.getElementById("form-heading");
     const saveStatus = document.getElementById("save-status");
     const listEl = document.getElementById("q-list");
     const searchBox = document.getElementById("search-box");
 
     let allQuestions = []; // แคชล่าสุดจาก onSnapshot ไว้ filter ฝั่ง client
+    // ไม่มี id = กำลังเพิ่มคำถามใหม่ (โหมดปกติ), มี id = กำลังแก้ไขคำถามนั้นอยู่ (กด "แก้ไข" จากรายการ)
+    let editingId = null;
 
     function optionLabel(zone) {
       return { tl: "A (บนซ้าย)", tr: "B (บนขวา)", bl: "C (ล่างซ้าย)", br: "D (ล่างขวา)" }[zone];
@@ -121,7 +133,7 @@
       listEl.innerHTML = filtered
         .map(
           (q) => `
-        <div class="q-list-item" data-id="${q.id}">
+        <div class="q-list-item${q.id === editingId ? " editing" : ""}" data-id="${q.id}">
           <div class="row">
             <div>
               <span class="tag">${q.subject}</span>
@@ -135,19 +147,68 @@
                 )
                 .join("")}
             </div>
-            <button class="del-btn" data-id="${q.id}">ลบ</button>
+            <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+              <button class="edit-btn" data-id="${q.id}">แก้ไข</button>
+              <button class="del-btn" data-id="${q.id}">ลบ</button>
+            </div>
           </div>
         </div>`
         )
         .join("");
 
+      listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+        btn.addEventListener("click", () => startEdit(btn.dataset.id));
+      });
+
       listEl.querySelectorAll(".del-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
           if (!confirm("ลบคำถามนี้ออกจากคลังถาวร?")) return;
+          if (btn.dataset.id === editingId) cancelEdit(); // กำลังแก้ไขข้อนี้อยู่พอดีแล้วดันลบทิ้ง — เคลียร์ฟอร์มกันค้าง
           await deleteDoc(doc(db, "questionBank", btn.dataset.id));
         });
       });
     }
+
+    // เดิมหน้านี้แก้คำถามที่บันทึกไปแล้วไม่ได้เลย ต้องลบทิ้งแล้วพิมพ์ใหม่ทั้งข้อ (เสีย id เดิม/createdAt เดิม
+    // ไปด้วย) — เพิ่มโหมด "แก้ไข" โดยใช้ฟอร์มเดียวกับ "เพิ่มคำถามใหม่" นี่แหละ แค่สลับโหมดตอนกด "แก้ไข"
+    function startEdit(id) {
+      const q = allQuestions.find((item) => item.id === id);
+      if (!q) return;
+      editingId = id;
+      subjectEl.value = q.subject ?? "";
+      textEl.value = q.text ?? "";
+      optEls.tl.value = q.options?.tl ?? "";
+      optEls.tr.value = q.options?.tr ?? "";
+      optEls.bl.value = q.options?.bl ?? "";
+      optEls.br.value = q.options?.br ?? "";
+      correctEl.value = q.correctZone ?? "tl";
+      explainEl.value = q.explanation ?? "";
+
+      formHeading.textContent = "✏️ กำลังแก้ไขคำถาม";
+      saveBtn.textContent = "บันทึกการแก้ไข";
+      cancelEditBtn.style.display = "block";
+      saveStatus.textContent = "";
+      renderList(); // รีเฟรชให้กล่องที่กำลังแก้ไขไฮไลต์ (ดู .q-list-item.editing ใน CSS)
+      document.querySelector(".q-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // clearStatus: false ใช้ตอนเรียกจากปุ่ม "บันทึกการแก้ไข" ที่สำเร็จแล้ว (อยากให้ข้อความ "✅ บันทึกการ
+    // แก้ไขแล้ว" ยังค้างให้เห็นต่อ ไม่ใช่ถูกเคลียร์ทิ้งทันทีที่ฟอร์มรีเซ็ตกลับไปโหมดเพิ่มคำถามใหม่)
+    function cancelEdit({ clearStatus = true } = {}) {
+      editingId = null;
+      subjectEl.value = "";
+      textEl.value = "";
+      optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
+      correctEl.value = "tl";
+      explainEl.value = "";
+      formHeading.textContent = "เพิ่มคำถามใหม่";
+      saveBtn.textContent = "บันทึกลงคลัง";
+      cancelEditBtn.style.display = "none";
+      if (clearStatus) saveStatus.textContent = "";
+      renderList();
+    }
+
+    cancelEditBtn.addEventListener("click", () => cancelEdit());
 
     onSnapshot(
       collection(db, "questionBank"),
@@ -181,21 +242,36 @@
       }
 
       saveBtn.disabled = true;
-      saveStatus.textContent = "กำลังบันทึก...";
+      saveStatus.textContent = editingId ? "กำลังบันทึกการแก้ไข..." : "กำลังบันทึก...";
       try {
-        await addDoc(collection(db, "questionBank"), {
-          subject,
-          text,
-          options,
-          correctZone,
-          explanation,
-          createdAt: serverTimestamp(),
-        });
-        saveStatus.textContent = "✅ บันทึกแล้ว";
-        textEl.value = "";
-        optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
-        explainEl.value = "";
-        // subject คงไว้ตั้งใจ เพราะครูมักเพิ่มหลายข้อติดกันในวิชา/บทเดียวกัน
+        if (editingId) {
+          // แก้ไขคำถามเดิม — updateDoc ทับเฉพาะฟิลด์เหล่านี้ ไม่แตะ createdAt เดิม (ลำดับ "ล่าสุดก่อน" ใน
+          // รายการยังอิงจากวันที่สร้างจริง ไม่ใช่วันที่แก้ล่าสุด) เติม updatedAt ไว้เผื่ออยากรู้ว่าแก้เมื่อไหร่
+          await updateDoc(doc(db, "questionBank", editingId), {
+            subject,
+            text,
+            options,
+            correctZone,
+            explanation,
+            updatedAt: serverTimestamp(),
+          });
+          cancelEdit({ clearStatus: false }); // กลับไปโหมด "เพิ่มคำถามใหม่" ตามปกติ ไม่ต้องกดยกเลิกเอง
+          saveStatus.textContent = "✅ บันทึกการแก้ไขแล้ว";
+        } else {
+          await addDoc(collection(db, "questionBank"), {
+            subject,
+            text,
+            options,
+            correctZone,
+            explanation,
+            createdAt: serverTimestamp(),
+          });
+          saveStatus.textContent = "✅ บันทึกแล้ว";
+          textEl.value = "";
+          optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
+          explainEl.value = "";
+          // subject คงไว้ตั้งใจ เพราะครูมักเพิ่มหลายข้อติดกันในวิชา/บทเดียวกัน
+        }
       } catch (err) {
         saveStatus.textContent = `❌ บันทึกไม่สำเร็จ: ${err.message}`;
       } finally {

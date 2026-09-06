@@ -85,8 +85,12 @@ test/
       บล็อก getUserMedia เสมอ — ต้องทดสอบ threshold/ความไวจริงบนมือถือก่อนใช้งานจริงในห้องเรียน
 - [x] Fallback: แตะจอตอบได้เมื่อกล้อง/แสงมีปัญหา — ทดสอบแล้ว ทำงานถูกต้อง
 - [x] Game mechanic: จับเวลา + วนคำถามซ้ำ (ทดสอบ logic แล้วใน student/app.js)
-- [x] Teacher: Question Bank CRUD ต่อ Firestore จริงแล้ว — เพิ่ม/ลบ/list realtime + ค้นหา ทดสอบแล้วด้วย
-      คำถามจริง 10 ข้อ (seed จาก `sample-questions.js` ผ่าน `test/seed-sample-questions.html`)
+- [x] Teacher: Question Bank CRUD ต่อ Firestore จริงแล้ว — เพิ่ม/ลบ/**แก้ไข**/list realtime + ค้นหา ทดสอบแล้วด้วย
+      คำถามจริง 10 ข้อ (seed จาก `sample-questions.js` ผ่าน `test/seed-sample-questions.html`) — เดิมแก้คำถาม
+      ที่บันทึกไปแล้วไม่ได้เลย ต้องลบทิ้งพิมพ์ใหม่ทั้งข้อ (เสีย id/createdAt เดิม) ตอนนี้กด "แก้ไข" ที่รายการ
+      ฝั่งขวาแล้วฟอร์มซ้ายจะเติมข้อมูลเดิมให้ แก้แล้วกด "บันทึกการแก้ไข" ได้เลย (การ์ดที่กำลังแก้ไขอยู่จะมีกรอบ
+      ไฮไลต์ให้เห็นชัด) — ทดสอบ UI flow (เติมฟอร์ม/ยกเลิก/ไฮไลต์) ด้วยข้อมูลจำลองแล้ว ยังไม่เคยทดสอบ
+      updateDoc จริงกับ Firestore (ต้อง login ครูจริงถึงจะลองได้)
 - [x] Teacher: Quiz Builder ต่อ Firestore จริงแล้ว (`host.html`) — เลือกคำถามจากคลัง (checkbox), ตั้งชื่อ,
       ตั้งเวลาเล่น, สร้าง session doc พร้อม QR code (คลัง `qrcodejs` จาก cdnjs), คะแนนสด realtime ผ่าน onSnapshot
       **ทดสอบ end-to-end จริงแล้ว**: สร้างห้อง → นักเรียน join คนละแท็บ → ตอบคำถาม → คะแนนขึ้นที่ครูทันทีไม่ต้องรีเฟรช
