@@ -18,6 +18,7 @@ import {
   limit,
   arrayUnion,
   increment,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getAuth,
@@ -49,6 +50,7 @@ export {
   limit,
   arrayUnion,
   increment,
+  writeBatch,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,

@@ -15,7 +15,6 @@
     .q-list-item .edit-btn { background: var(--accent); }
     /* กล่องที่กำลังแก้ไขอยู่ตอนนี้ (ฟอร์มซ้ายเติมข้อมูลของมันอยู่) ไฮไลต์กรอบให้เห็นชัดว่าแก้ข้อไหนอยู่ */
     .q-list-item.editing { border-color: var(--accent); }
-    .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; margin-right:6px; }
     .opt-line { color: var(--muted); font-size: 0.85rem; margin: 2px 0; }
     .opt-line.correct { color: var(--correct); font-weight: 600; }
 
@@ -29,72 +28,173 @@
       #q-list { column-count: 2; column-gap: 16px; }
       .q-list-item { break-inside: avoid-column; }
     }
+
+    /* ============ v2 (ก.ย. 2026): ระบบ "ชุดข้อสอบ" ============
+       เดิมคำถามทั้งคลังกองรวมเป็นพูลเดียว ผูกกับช่อง "วิชา" ที่เป็นแค่ข้อความอิสระ ไม่มีการแยกเป็น
+       "ชุด" จริงจัง — ครูเทียบกับ Kahoot/Blooket (ส่งภาพหน้าจอ my-library มาให้ดู) ที่แต่ละชุดข้อสอบ
+       เป็นการ์ดแยกกันชัดเจน มีชื่อ/จำนวนคำถามของตัวเอง คลิกเข้าไปดู/แก้ไขทีละชุด — เพิ่มหน้าจอระดับบน
+       "รายการชุดข้อสอบ" (การ์ดกริด) ก่อนเข้าไปหน้าจอเดิม (ฟอร์ม+รายการคำถาม) ซึ่งตอนนี้ถูกจำกัดขอบเขต
+       ไว้แค่ชุดที่เลือกเท่านั้น ไม่ใช่ทั้งคลังปนกัน */
+    .new-set-bar { display:flex; gap:8px; margin-bottom:16px; }
+    .new-set-bar input { flex:1; margin-bottom:0; }
+    .new-set-bar button { flex-shrink:0; white-space:nowrap; }
+
+    .sets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .set-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      color: white;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .set-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .set-card-count {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(15,23,42,0.55);
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .set-card-title {
+      font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      line-height: 1.3;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      word-break: break-word;
+    }
+    .set-card-actions {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+    }
+    .set-card:hover .set-card-actions { opacity: 1; }
+    .set-card-actions button {
+      padding: 4px 8px;
+      font-size: 0.8rem;
+      background: rgba(15,23,42,0.6);
+      box-shadow: none;
+    }
+
+    .set-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .set-detail-header h1 { margin: 0; }
+    .set-detail-header .set-rename-input { width: auto; flex: 1; min-width: 180px; margin-bottom: 0; }
+    .set-detail-header button { font-size: 0.8rem; padding: 6px 12px; }
+    .set-detail-header .set-delete-btn { background: var(--wrong); }
   </style>
 </head>
 <body>
   <div class="bank-layout" id="app-content" style="display:none;">
     <a href="index.html" style="color:var(--muted)">← กลับหน้าครู</a>
-    <h1>📚 คลังข้อสอบ</h1>
 
-    <div class="bank-content">
-      <!-- ครอบ q-form + bulk-panel ไว้ในคอลัมน์เดียวกัน (ซ้าย) ด้วยกัน — .bank-content เป็น grid 2 คอลัมน์
-           ถ้าไม่ครอบไว้ ลูกตัวที่ 3 (bulk-panel) จะไหลไปแทรกคอลัมน์ขวาแทนตาม grid auto-flow ปกติ ดันรายการ
-           คำถามในคลังตกไปแถวที่ 2 คอลัมน์ซ้ายผิดที่ไปเลย (เจอบั๊กนี้จริงตอนทดสอบด้วยตา ก่อน commit) -->
-      <div class="bank-left-column">
-      <div class="panel q-form">
-        <h3 id="form-heading">เพิ่มคำถามใหม่</h3>
-        <input id="q-subject" placeholder="วิชา/บทเรียน (เช่น สังคม ม.2 - อยุธยา)" />
-        <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
-        <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
-        <input id="q-opt-tr" placeholder="ตัวเลือก B (มุมขวาบน)" />
-        <input id="q-opt-bl" placeholder="ตัวเลือก C (มุมซ้ายล่าง)" />
-        <input id="q-opt-br" placeholder="ตัวเลือก D (มุมขวาล่าง)" />
-        <select id="q-correct" style="width:100%; margin-bottom:8px;">
-          <option value="tl">เฉลย: A</option>
-          <option value="tr">เฉลย: B</option>
-          <option value="bl">เฉลย: C</option>
-          <option value="br">เฉลย: D</option>
-        </select>
-        <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
-        <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
-        <!-- โชว์เฉพาะตอนกำลังแก้ไขคำถามเดิม (กด "แก้ไข" จากรายการทางขวา) — กดยกเลิกกลับไปโหมด
-             "เพิ่มคำถามใหม่" ตามปกติ ไม่บันทึกอะไรทับของเดิม -->
-        <button id="cancel-edit-btn" type="button" style="width:100%; margin-top:6px; background:#334155; display:none;">
-          ยกเลิกการแก้ไข
-        </button>
-        <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
+    <!-- ============ หน้าจอ 1/2: รายการชุดข้อสอบ (การ์ดกริด แบบ Kahoot/Blooket) ============ -->
+    <div id="sets-view">
+      <h1>📚 ชุดข้อสอบ</h1>
+      <div class="new-set-bar">
+        <input id="new-set-title" placeholder="ชื่อชุดข้อสอบใหม่ (เช่น สังคม ม.2 - ทวีปยุโรป)" />
+        <button id="create-set-btn">➕ สร้างชุด</button>
+      </div>
+      <p id="new-set-status" style="color:var(--muted); font-size:0.85rem; margin-top:-8px;"></p>
+      <div class="sets-grid" id="sets-grid">
+        <p style="color:var(--muted)">กำลังโหลดชุดข้อสอบ...</p>
+      </div>
+    </div>
+
+    <!-- ============ หน้าจอ 2/2: รายละเอียดชุด (ฟอร์มเพิ่ม/แก้ไข + รายการคำถามของชุดนี้เท่านั้น) ============ -->
+    <div id="set-detail-view" style="display:none;">
+      <div class="set-detail-header">
+        <a href="#" id="back-to-sets-link" style="color:var(--muted)">←</a>
+        <h1 id="set-detail-title">ชุดข้อสอบ</h1>
+        <input id="set-rename-input" class="set-rename-input" style="display:none;" />
+        <button id="rename-set-btn" type="button" style="background:#334155;">✏️ เปลี่ยนชื่อ</button>
+        <button id="save-rename-btn" type="button" style="display:none;">บันทึกชื่อ</button>
+        <button id="cancel-rename-btn" type="button" style="display:none; background:#334155;">ยกเลิก</button>
+        <button id="delete-set-btn" type="button" class="set-delete-btn">🗑️ ลบทั้งชุด</button>
       </div>
 
-      <!-- นำเข้าหลายข้อพร้อมกัน — เดิมพิมพ์ได้ทีละข้อผ่านฟอร์มด้านบนเท่านั้น ถ้าครูเตรียมคำถามไว้ล่วงหน้า
-           เป็นสิบๆ ข้อ (เช่นใน Google Docs/Sheets) จะช้ามากถ้าต้องพิมพ์ทีละข้อ ยุบไว้เป็น disclosure ปกติ
-           ไม่ให้หน้าตาดูรกกว่าเดิมสำหรับครูที่ไม่ได้ใช้ฟีเจอร์นี้ -->
-      <div class="panel" id="bulk-panel" style="margin-top:16px;">
-        <button id="bulk-toggle-btn" type="button" style="width:100%; background:#334155;">
-          📋 นำเข้าหลายข้อพร้อมกัน
-        </button>
-        <div id="bulk-body" style="display:none; margin-top:12px;">
-          <p style="color:var(--muted); font-size:0.78rem; line-height:1.5;">
-            1 บรรทัดต่อ 1 คำถาม คั่นแต่ละช่องด้วย <code>|</code> ตามลำดับนี้:<br />
-            <code style="word-break:break-all;">วิชา|คำถาม|ตัวเลือกA|ตัวเลือกB|ตัวเลือกC|ตัวเลือกD|เฉลย(A/B/C/D)|คำอธิบาย(เว้นว่างได้)</code><br />
-            บรรทัดว่างหรือขึ้นต้นด้วย <code>#</code> จะถูกข้ามไป (ใช้เขียนหมายเหตุได้)
-          </p>
-          <textarea
-            id="bulk-text"
-            rows="6"
-            placeholder="สังคม ม.2 - อยุธยา|กรุงศรีอยุธยาก่อตั้ง พ.ศ. ใด|1893|1350|1767|2100|B|"
-            style="width:100%; margin-bottom:8px; font-family:monospace; font-size:0.78rem;"
-          ></textarea>
-          <button id="bulk-import-btn" style="width:100%;">นำเข้าทั้งหมด</button>
-          <div id="bulk-result" style="margin-top:8px; font-size:0.82rem;"></div>
+      <div class="bank-content">
+        <!-- ครอบ q-form + bulk-panel ไว้ในคอลัมน์เดียวกัน (ซ้าย) ด้วยกัน — .bank-content เป็น grid 2 คอลัมน์
+             ถ้าไม่ครอบไว้ ลูกตัวที่ 3 (bulk-panel) จะไหลไปแทรกคอลัมน์ขวาแทนตาม grid auto-flow ปกติ ดันรายการ
+             คำถามในคลังตกไปแถวที่ 2 คอลัมน์ซ้ายผิดที่ไปเลย (เจอบั๊กนี้จริงตอนทดสอบด้วยตา ก่อน commit) -->
+        <div class="bank-left-column">
+        <div class="panel q-form">
+          <h3 id="form-heading">เพิ่มคำถามใหม่</h3>
+          <textarea id="q-text" placeholder="คำถาม" rows="2"></textarea>
+          <input id="q-opt-tl" placeholder="ตัวเลือก A (มุมซ้ายบน)" />
+          <input id="q-opt-tr" placeholder="ตัวเลือก B (มุมขวาบน)" />
+          <input id="q-opt-bl" placeholder="ตัวเลือก C (มุมซ้ายล่าง)" />
+          <input id="q-opt-br" placeholder="ตัวเลือก D (มุมขวาล่าง)" />
+          <select id="q-correct" style="width:100%; margin-bottom:8px;">
+            <option value="tl">เฉลย: A</option>
+            <option value="tr">เฉลย: B</option>
+            <option value="bl">เฉลย: C</option>
+            <option value="br">เฉลย: D</option>
+          </select>
+          <textarea id="q-explain" placeholder="คำอธิบายเฉลย (โชว์ตอนดูย้อนหลัง)" rows="2"></textarea>
+          <button id="save-btn" style="width:100%;">บันทึกลงคลัง</button>
+          <!-- โชว์เฉพาะตอนกำลังแก้ไขคำถามเดิม (กด "แก้ไข" จากรายการทางขวา) — กดยกเลิกกลับไปโหมด
+               "เพิ่มคำถามใหม่" ตามปกติ ไม่บันทึกอะไรทับของเดิม -->
+          <button id="cancel-edit-btn" type="button" style="width:100%; margin-top:6px; background:#334155; display:none;">
+            ยกเลิกการแก้ไข
+          </button>
+          <p id="save-status" style="color:var(--muted); font-size:0.85rem;"></p>
         </div>
-      </div>
-      </div> <!-- ปิด .bank-left-column -->
 
-      <div>
-        <h3>คำถามในคลัง</h3>
-        <input id="search-box" placeholder="ค้นหา / กรองตามวิชา" style="width:100%; margin-bottom:12px;" />
-        <div id="q-list">
-          <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
+        <!-- นำเข้าหลายข้อพร้อมกัน — เดิมพิมพ์ได้ทีละข้อผ่านฟอร์มด้านบนเท่านั้น ถ้าครูเตรียมคำถามไว้ล่วงหน้า
+             เป็นสิบๆ ข้อ (เช่นใน Google Docs/Sheets) จะช้ามากถ้าต้องพิมพ์ทีละข้อ ยุบไว้เป็น disclosure ปกติ
+             ไม่ให้หน้าตาดูรกกว่าเดิมสำหรับครูที่ไม่ได้ใช้ฟีเจอร์นี้ -->
+        <div class="panel" id="bulk-panel" style="margin-top:16px;">
+          <button id="bulk-toggle-btn" type="button" style="width:100%; background:#334155;">
+            📋 นำเข้าหลายข้อพร้อมกัน
+          </button>
+          <div id="bulk-body" style="display:none; margin-top:12px;">
+            <p style="color:var(--muted); font-size:0.78rem; line-height:1.5;">
+              1 บรรทัดต่อ 1 คำถาม คั่นแต่ละช่องด้วย <code>|</code> ตามลำดับนี้:<br />
+              <code style="word-break:break-all;">วิชา|คำถาม|ตัวเลือกA|ตัวเลือกB|ตัวเลือกC|ตัวเลือกD|เฉลย(A/B/C/D)|คำอธิบาย(เว้นว่างได้)</code><br />
+              บรรทัดว่างหรือขึ้นต้นด้วย <code>#</code> จะถูกข้ามไป (ใช้เขียนหมายเหตุได้) —
+              <strong>ช่อง "วิชา" จะถูกแทนที่ด้วยชื่อชุดข้อสอบที่เปิดอยู่ตอนนี้อัตโนมัติ</strong> พิมพ์อะไรไว้ก็ได้ ไม่มีผล
+            </p>
+            <textarea
+              id="bulk-text"
+              rows="6"
+              placeholder="สังคม ม.2 - อยุธยา|กรุงศรีอยุธยาก่อตั้ง พ.ศ. ใด|1893|1350|1767|2100|B|"
+              style="width:100%; margin-bottom:8px; font-family:monospace; font-size:0.78rem;"
+            ></textarea>
+            <button id="bulk-import-btn" style="width:100%;">นำเข้าทั้งหมด</button>
+            <div id="bulk-result" style="margin-top:8px; font-size:0.82rem;"></div>
+          </div>
+        </div>
+        </div> <!-- ปิด .bank-left-column -->
+
+        <div>
+          <h3>คำถามในชุดนี้</h3>
+          <input id="search-box" placeholder="ค้นหาคำถาม" style="width:100%; margin-bottom:12px;" />
+          <div id="q-list">
+            <p style="color:var(--muted)">กำลังโหลด...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -108,19 +208,36 @@
       updateDoc,
       deleteDoc,
       doc,
+      getDocs,
       onSnapshot,
       serverTimestamp,
+      writeBatch,
     } from "../assets/js/firebase-init.js";
     import { requireAuth } from "../assets/js/auth-guard.js";
     import { parseBulkQuestions } from "../assets/js/bulk-import.js";
+    import { colorForSetId, countQuestionsBySet, planSubjectMigration } from "../assets/js/question-sets.js";
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
       init();
     });
 
-    function init() {
-    const subjectEl = document.getElementById("q-subject");
+    async function init() {
+    // --- ระดับบน: 2 หน้าจอ (รายการชุด / รายละเอียดชุด) สลับด้วย showSetsView()/showSetDetailView() ---
+    const setsView = document.getElementById("sets-view");
+    const setDetailView = document.getElementById("set-detail-view");
+    const setsGrid = document.getElementById("sets-grid");
+    const newSetTitleInput = document.getElementById("new-set-title");
+    const createSetBtn = document.getElementById("create-set-btn");
+    const newSetStatus = document.getElementById("new-set-status");
+    const backToSetsLink = document.getElementById("back-to-sets-link");
+    const setDetailTitle = document.getElementById("set-detail-title");
+    const setRenameInput = document.getElementById("set-rename-input");
+    const renameSetBtn = document.getElementById("rename-set-btn");
+    const saveRenameBtn = document.getElementById("save-rename-btn");
+    const cancelRenameBtn = document.getElementById("cancel-rename-btn");
+    const deleteSetBtn = document.getElementById("delete-set-btn");
+
     const textEl = document.getElementById("q-text");
     const optEls = {
       tl: document.getElementById("q-opt-tl"),
@@ -142,25 +259,185 @@
     const bulkImportBtn = document.getElementById("bulk-import-btn");
     const bulkResult = document.getElementById("bulk-result");
 
-    let allQuestions = []; // แคชล่าสุดจาก onSnapshot ไว้ filter ฝั่ง client
+    let allSets = []; // แคชล่าสุดจาก onSnapshot(questionSets)
+    let allQuestions = []; // แคชล่าสุดจาก onSnapshot(questionBank) — ทุกชุดปนกัน กรองตาม setId ตอน render
+    let currentSetId = null; // null = กำลังอยู่หน้ารายการชุด, มีค่า = กำลังดูรายละเอียดชุดนั้นอยู่
     // ไม่มี id = กำลังเพิ่มคำถามใหม่ (โหมดปกติ), มี id = กำลังแก้ไขคำถามนั้นอยู่ (กด "แก้ไข" จากรายการ)
     let editingId = null;
 
+    function currentSet() {
+      return allSets.find((s) => s.id === currentSetId) ?? null;
+    }
+
+    function showSetsView() {
+      currentSetId = null;
+      editingId = null;
+      setsView.style.display = "block";
+      setDetailView.style.display = "none";
+      renderSetsGrid();
+    }
+
+    function showSetDetailView(setId) {
+      currentSetId = setId;
+      editingId = null;
+      setsView.style.display = "none";
+      setDetailView.style.display = "block";
+      cancelEdit({ clearStatus: true });
+      searchBox.value = "";
+      cancelRename();
+      renderSetDetailHeader();
+      renderList();
+    }
+
+    backToSetsLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      showSetsView();
+    });
+
+    // ============ หน้าจอรายการชุด ============
+    function renderSetsGrid() {
+      if (allSets.length === 0) {
+        setsGrid.innerHTML = `<p style="color:var(--muted)">ยังไม่มีชุดข้อสอบเลย — สร้างชุดแรกได้ด้านบน</p>`;
+        return;
+      }
+      const counts = countQuestionsBySet(allQuestions);
+      const sorted = [...allSets].sort(
+        (a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)
+      );
+      setsGrid.innerHTML = sorted
+        .map((s) => {
+          const count = counts.get(s.id) ?? 0;
+          return `
+        <div class="set-card" data-id="${s.id}" style="background:${colorForSetId(s.id)}">
+          <div class="set-card-actions">
+            <button class="set-card-rename-btn" data-id="${s.id}" title="เปลี่ยนชื่อ">✏️</button>
+            <button class="set-card-delete-btn" data-id="${s.id}" title="ลบทั้งชุด">🗑️</button>
+          </div>
+          <div class="set-card-count">${count} ข้อ</div>
+          <div class="set-card-title">${s.title}</div>
+        </div>`;
+        })
+        .join("");
+
+      setsGrid.querySelectorAll(".set-card").forEach((card) => {
+        card.addEventListener("click", () => showSetDetailView(card.dataset.id));
+      });
+      setsGrid.querySelectorAll(".set-card-rename-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          showSetDetailView(btn.dataset.id);
+          startRename(); // เปิดโหมดเปลี่ยนชื่อทันทีที่เข้าไปหน้ารายละเอียด สะดวกกว่าให้กดซ้ำ
+        });
+      });
+      setsGrid.querySelectorAll(".set-card-delete-btn").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          deleteSet(btn.dataset.id);
+        });
+      });
+    }
+
+    createSetBtn.addEventListener("click", async () => {
+      const title = newSetTitleInput.value.trim();
+      if (!title) {
+        newSetStatus.textContent = "⚠️ กรอกชื่อชุดข้อสอบก่อน";
+        return;
+      }
+      createSetBtn.disabled = true;
+      newSetStatus.textContent = "กำลังสร้าง...";
+      try {
+        await addDoc(collection(db, "questionSets"), { title, createdAt: serverTimestamp() });
+        newSetTitleInput.value = "";
+        newSetStatus.textContent = "✅ สร้างชุดข้อสอบแล้ว";
+      } catch (err) {
+        newSetStatus.textContent = `❌ สร้างไม่สำเร็จ: ${err.message}`;
+      } finally {
+        createSetBtn.disabled = false;
+      }
+    });
+
+    // ลบชุดข้อสอบทั้งชุด — cascade ลบคำถามทุกข้อในชุดไปด้วย (ไม่งั้นจะเหลือคำถาม "กำพร้า" ที่ setId ชี้ไป
+    // ชุดที่ไม่มีอยู่แล้ว ไม่มีทางเข้าถึง/แก้ไขได้อีกเลยจากหน้านี้) ใช้ writeBatch ให้ลบพร้อมกันเป็นก้อนเดียว
+    async function deleteSet(setId) {
+      const set = allSets.find((s) => s.id === setId);
+      const count = countQuestionsBySet(allQuestions).get(setId) ?? 0;
+      if (
+        !confirm(
+          `ลบชุดข้อสอบ "${set?.title ?? "?"}" ทั้งชุด รวมคำถามทุกข้อในชุด (${count} ข้อ) ถาวร? กู้คืนไม่ได้`
+        )
+      ) {
+        return;
+      }
+      const batch = writeBatch(db);
+      allQuestions.filter((q) => q.setId === setId).forEach((q) => batch.delete(doc(db, "questionBank", q.id)));
+      batch.delete(doc(db, "questionSets", setId));
+      await batch.commit();
+      if (currentSetId === setId) showSetsView();
+    }
+
+    // ============ หน้าจอรายละเอียดชุด: หัวข้อ + เปลี่ยนชื่อ/ลบ ============
+    function renderSetDetailHeader() {
+      const set = currentSet();
+      setDetailTitle.textContent = set?.title ?? "ชุดข้อสอบ";
+    }
+
+    function startRename() {
+      const set = currentSet();
+      if (!set) return;
+      setRenameInput.value = set.title;
+      setRenameInput.style.display = "inline-block";
+      setDetailTitle.style.display = "none";
+      renameSetBtn.style.display = "none";
+      saveRenameBtn.style.display = "inline-block";
+      cancelRenameBtn.style.display = "inline-block";
+      setRenameInput.focus();
+    }
+
+    function cancelRename() {
+      setRenameInput.style.display = "none";
+      setDetailTitle.style.display = "block";
+      renameSetBtn.style.display = "inline-block";
+      saveRenameBtn.style.display = "none";
+      cancelRenameBtn.style.display = "none";
+    }
+
+    renameSetBtn.addEventListener("click", startRename);
+    cancelRenameBtn.addEventListener("click", cancelRename);
+    saveRenameBtn.addEventListener("click", async () => {
+      const newTitle = setRenameInput.value.trim();
+      if (!newTitle || !currentSetId) return;
+      saveRenameBtn.disabled = true;
+      try {
+        await updateDoc(doc(db, "questionSets", currentSetId), {
+          title: newTitle,
+          updatedAt: serverTimestamp(),
+        });
+        cancelRename();
+        renderSetDetailHeader();
+      } catch (err) {
+        alert(`เปลี่ยนชื่อไม่สำเร็จ: ${err.message}`);
+      } finally {
+        saveRenameBtn.disabled = false;
+      }
+    });
+
+    deleteSetBtn.addEventListener("click", () => {
+      if (currentSetId) deleteSet(currentSetId);
+    });
+
+    // ============ รายการคำถามในชุดที่กำลังเปิดอยู่ ============
     function optionLabel(zone) {
       return { tl: "A (บนซ้าย)", tr: "B (บนขวา)", bl: "C (ล่างซ้าย)", br: "D (ล่างขวา)" }[zone];
     }
 
     function renderList() {
       const term = searchBox.value.trim().toLowerCase();
-      const filtered = term
-        ? allQuestions.filter(
-            (q) => q.subject.toLowerCase().includes(term) || q.text.toLowerCase().includes(term)
-          )
-        : allQuestions;
+      const inSet = allQuestions.filter((q) => q.setId === currentSetId);
+      const filtered = term ? inSet.filter((q) => q.text.toLowerCase().includes(term)) : inSet;
 
       if (filtered.length === 0) {
         listEl.innerHTML = `<p style="color:var(--muted)">${
-          allQuestions.length === 0 ? "ยังไม่มีคำถามในคลัง — เพิ่มข้อแรกได้ด้านบน" : "ไม่พบคำถามที่ตรงกับคำค้นหา"
+          inSet.length === 0 ? "ยังไม่มีคำถามในชุดนี้ — เพิ่มข้อแรกได้ด้านซ้าย" : "ไม่พบคำถามที่ตรงกับคำค้นหา"
         }</p>`;
         return;
       }
@@ -171,8 +448,7 @@
         <div class="q-list-item${q.id === editingId ? " editing" : ""}" data-id="${q.id}">
           <div class="row">
             <div>
-              <span class="tag">${q.subject}</span>
-              <p style="margin:6px 0 4px;">${q.text}</p>
+              <p style="margin:2px 0 4px;">${q.text}</p>
               ${Object.entries(q.options)
                 .map(
                   ([zone, text]) =>
@@ -197,7 +473,7 @@
 
       listEl.querySelectorAll(".del-btn").forEach((btn) => {
         btn.addEventListener("click", async () => {
-          if (!confirm("ลบคำถามนี้ออกจากคลังถาวร?")) return;
+          if (!confirm("ลบคำถามนี้ออกจากชุดถาวร?")) return;
           if (btn.dataset.id === editingId) cancelEdit(); // กำลังแก้ไขข้อนี้อยู่พอดีแล้วดันลบทิ้ง — เคลียร์ฟอร์มกันค้าง
           await deleteDoc(doc(db, "questionBank", btn.dataset.id));
         });
@@ -210,7 +486,6 @@
       const q = allQuestions.find((item) => item.id === id);
       if (!q) return;
       editingId = id;
-      subjectEl.value = q.subject ?? "";
       textEl.value = q.text ?? "";
       optEls.tl.value = q.options?.tl ?? "";
       optEls.tr.value = q.options?.tr ?? "";
@@ -231,7 +506,6 @@
     // แก้ไขแล้ว" ยังค้างให้เห็นต่อ ไม่ใช่ถูกเคลียร์ทิ้งทันทีที่ฟอร์มรีเซ็ตกลับไปโหมดเพิ่มคำถามใหม่)
     function cancelEdit({ clearStatus = true } = {}) {
       editingId = null;
-      subjectEl.value = "";
       textEl.value = "";
       optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
       correctEl.value = "tl";
@@ -251,9 +525,10 @@
 
     // นำเข้าหลายข้อพร้อมกัน — parseBulkQuestions() (assets/js/bulk-import.js) แยก parsing ล้วนๆ ออกไปแล้ว
     // (ทดสอบเองแยกต่างหากได้ที่ test/bulk-import-selftest.html) ที่นี่แค่เรียกใช้แล้วยิง addDoc ทีละข้อ —
-    // ใช้ลูป sequential ธรรมดา ไม่ใช่ Firestore batch write เพราะจำนวนคำถามต่อครั้งในคลังขนาดนี้ (ไม่กี่สิบ
+    // ใช้ลูป sequential ธรรมดา ไม่ใช่ Firestore batch write เพราะจำนวนคำถามต่อครั้งในชุดขนาดนี้ (ไม่กี่สิบ
     // ข้อ) ไม่คุ้มความซับซ้อนเพิ่ม แถมได้ผลลัพธ์ "สำเร็จบางข้อ พลาดบางข้อ" แยกกันชัดเจนกว่า batch (batch ปกติ
-    // เป็น all-or-nothing)
+        // เป็น all-or-nothing) — ช่อง subject ที่ parse ได้จากแต่ละบรรทัด "ไม่ใช้เลย" แทนที่ด้วยชื่อชุดปัจจุบัน
+    // เสมอ (ดูหมายเหตุใน UI): ครูพิมพ์อะไรในช่องนั้นก็ได้ ไม่มีผลต่อผลลัพธ์จริง
     bulkImportBtn.addEventListener("click", async () => {
       const { valid, errors } = parseBulkQuestions(bulkText.value);
       if (valid.length === 0 && errors.length === 0) {
@@ -261,6 +536,7 @@
         return;
       }
 
+      const setTitle = currentSet()?.title ?? "";
       bulkImportBtn.disabled = true;
       bulkResult.innerHTML = `<p style="color:var(--muted)">กำลังนำเข้า ${valid.length} ข้อ...</p>`;
 
@@ -268,7 +544,12 @@
       const writeErrors = [];
       for (const q of valid) {
         try {
-          await addDoc(collection(db, "questionBank"), { ...q, createdAt: serverTimestamp() });
+          await addDoc(collection(db, "questionBank"), {
+            ...q,
+            subject: setTitle,
+            setId: currentSetId,
+            createdAt: serverTimestamp(),
+          });
           successCount += 1;
         } catch (err) {
           writeErrors.push(err.message);
@@ -300,22 +581,10 @@
       bulkImportBtn.disabled = false;
     });
 
-    onSnapshot(
-      collection(db, "questionBank"),
-      (snap) => {
-        allQuestions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        allQuestions.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
-        renderList();
-      },
-      (err) => {
-        listEl.innerHTML = `<p style="color:var(--wrong)">โหลดคลังข้อสอบไม่สำเร็จ: ${err.message}</p>`;
-      }
-    );
-
     searchBox.addEventListener("input", renderList);
 
     saveBtn.addEventListener("click", async () => {
-      const subject = subjectEl.value.trim();
+      if (!currentSetId) return;
       const text = textEl.value.trim();
       const options = {
         tl: optEls.tl.value.trim(),
@@ -325,9 +594,10 @@
       };
       const correctZone = correctEl.value;
       const explanation = explainEl.value.trim();
+      const subject = currentSet()?.title ?? "";
 
-      if (!subject || !text || Object.values(options).some((v) => !v)) {
-        saveStatus.textContent = "⚠️ กรอกให้ครบ: วิชา, คำถาม, และตัวเลือกทั้ง 4 ข้อ";
+      if (!text || Object.values(options).some((v) => !v)) {
+        saveStatus.textContent = "⚠️ กรอกให้ครบ: คำถาม และตัวเลือกทั้ง 4 ข้อ";
         return;
       }
 
@@ -337,6 +607,8 @@
         if (editingId) {
           // แก้ไขคำถามเดิม — updateDoc ทับเฉพาะฟิลด์เหล่านี้ ไม่แตะ createdAt เดิม (ลำดับ "ล่าสุดก่อน" ใน
           // รายการยังอิงจากวันที่สร้างจริง ไม่ใช่วันที่แก้ล่าสุด) เติม updatedAt ไว้เผื่ออยากรู้ว่าแก้เมื่อไหร่
+          // subject รีเฟรชเป็นชื่อชุดปัจจุบันเสมอ เผื่อชุดนี้เพิ่งถูกเปลี่ยนชื่อไปแล้วคำถามเก่ายังมี subject
+          // ค้างเป็นชื่อเก่าอยู่ (ไม่กระทบการแสดงผลในหน้านี้ที่ไม่โชว์ subject ซ้ำแล้ว แต่เก็บให้ตรงกันไว้)
           await updateDoc(doc(db, "questionBank", editingId), {
             subject,
             text,
@@ -350,6 +622,7 @@
         } else {
           await addDoc(collection(db, "questionBank"), {
             subject,
+            setId: currentSetId,
             text,
             options,
             correctZone,
@@ -360,7 +633,6 @@
           textEl.value = "";
           optEls.tl.value = optEls.tr.value = optEls.bl.value = optEls.br.value = "";
           explainEl.value = "";
-          // subject คงไว้ตั้งใจ เพราะครูมักเพิ่มหลายข้อติดกันในวิชา/บทเดียวกัน
         }
       } catch (err) {
         saveStatus.textContent = `❌ บันทึกไม่สำเร็จ: ${err.message}`;
@@ -368,6 +640,72 @@
         saveBtn.disabled = false;
       }
     });
+
+    // ============ ย้ายข้อมูลเดิมครั้งเดียว: คำถามเก่าที่มีแค่ "วิชา" เป็นข้อความ ยังไม่มี setId ============
+    // จัดกลุ่มตามชื่อวิชาเดิมทุกตัวอักษร แล้วสร้างชุดข้อสอบใหม่ 1 ชุดต่อ 1 กลุ่ม (หรือใช้ชุดที่มีชื่อตรงกัน
+    // อยู่แล้วถ้ามี) จากนั้นเขียน setId กลับเข้าคำถามแต่ละข้อ — เรียกซ้ำได้ปลอดภัยทุกครั้งที่เปิดหน้านี้
+    // (planSubjectMigration คืนแผนว่างเปล่าถ้าย้ายครบแล้ว ดู question-sets.js)
+    async function runMigrationIfNeeded() {
+      const [setsSnap, questionsSnap] = await Promise.all([
+        getDocs(collection(db, "questionSets")),
+        getDocs(collection(db, "questionBank")),
+      ]);
+      const existingSets = setsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const questions = questionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const plan = planSubjectMigration(questions);
+      if (plan.size === 0) return;
+
+      const existingByTitle = new Map(existingSets.map((s) => [s.title, s.id]));
+      for (const [subject, questionIds] of plan) {
+        let setId = existingByTitle.get(subject);
+        if (!setId) {
+          const newSetRef = await addDoc(collection(db, "questionSets"), {
+            title: subject,
+            createdAt: serverTimestamp(),
+          });
+          setId = newSetRef.id;
+          existingByTitle.set(subject, setId);
+        }
+        const batch = writeBatch(db);
+        questionIds.forEach((qid) => batch.update(doc(db, "questionBank", qid), { setId }));
+        await batch.commit();
+      }
+    }
+
+    try {
+      await runMigrationIfNeeded();
+    } catch (err) {
+      // ย้ายไม่สำเร็จ (เช่นเน็ตหลุดตอนนั้นพอดี) ไม่ควรบล็อกไม่ให้เปิดหน้าเลย — ลองใหม่อัตโนมัติตอนโหลด
+      // หน้านี้รอบหน้าได้ (idempotent) แค่แจ้งเตือนใน console เฉยๆ
+      console.error("ย้ายข้อมูลชุดข้อสอบเดิมไม่สำเร็จ:", err);
+    }
+
+    onSnapshot(
+      collection(db, "questionSets"),
+      (snap) => {
+        allSets = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (currentSetId === null) renderSetsGrid();
+        else renderSetDetailHeader();
+      },
+      (err) => {
+        setsGrid.innerHTML = `<p style="color:var(--wrong)">โหลดชุดข้อสอบไม่สำเร็จ: ${err.message}</p>`;
+      }
+    );
+
+    onSnapshot(
+      collection(db, "questionBank"),
+      (snap) => {
+        allQuestions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        allQuestions.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        if (currentSetId === null) renderSetsGrid();
+        else renderList();
+      },
+      (err) => {
+        setsGrid.innerHTML = `<p style="color:var(--wrong)">โหลดคลังข้อสอบไม่สำเร็จ: ${err.message}</p>`;
+      }
+    );
+
+    showSetsView();
     } // ปิด init()
   </script>
 </body>

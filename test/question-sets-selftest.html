@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Question Sets Self-Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f1f5f9; padding: 24px; }
+    #log { white-space: pre-wrap; background: #1e293b; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; }
+    .ok { color: #22c55e; }
+    .fail { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Question Sets Self-Test</h1>
+  <p>
+    ทดสอบตรรกะล้วนๆ ของระบบ "ชุดข้อสอบ" (colorForSetId / countQuestionsBySet / planSubjectMigration)
+    ไม่แตะ Firestore จริงเลย (ไม่ต้อง login)
+  </p>
+  <div id="log">กำลังทดสอบ...</div>
+
+  <script type="module">
+    import { colorForSetId, countQuestionsBySet, planSubjectMigration, SET_CARD_COLORS } from "../assets/js/question-sets.js";
+
+    const logEl = document.getElementById("log");
+    const lines = [];
+    let pass = 0, fail = 0;
+    function check(label, actual, expected) {
+      const ok = JSON.stringify(actual) === JSON.stringify(expected);
+      if (ok) pass++; else fail++;
+      lines.push(`${ok ? "✅" : "❌"} ${label}${ok ? "" : `: ได้ ${JSON.stringify(actual)} (คาดหวัง ${JSON.stringify(expected)})`}`);
+      logEl.innerHTML = lines.join("\n");
+    }
+
+    // --- colorForSetId ---
+    {
+      const c1 = colorForSetId("abc123");
+      check("colorForSetId คืนค่าที่อยู่ใน palette จริง", SET_CARD_COLORS.includes(c1), true);
+      check("colorForSetId: id เดิมต้องได้สีเดิมทุกครั้ง (deterministic)", colorForSetId("abc123"), colorForSetId("abc123"));
+      // ไม่การันตีว่า id ต่างกันต้องได้สีต่างกันเสมอ (มี palette จำกัด ชนกันได้) แค่ไม่ throw/ไม่ undefined
+      check("colorForSetId: id ว่างเปล่า/undefined ไม่ crash", typeof colorForSetId(undefined), "string");
+      check("colorForSetId: id ว่างเปล่า/undefined ไม่ crash (string เปล่า)", typeof colorForSetId(""), "string");
+    }
+
+    // --- countQuestionsBySet ---
+    {
+      const qs = [
+        { id: "q1", setId: "setA" },
+        { id: "q2", setId: "setA" },
+        { id: "q3", setId: "setB" },
+        { id: "q4" }, // ไม่มี setId เลย (ยังไม่ถูกย้าย) — ไม่ควรถูกนับ
+      ];
+      const counts = countQuestionsBySet(qs);
+      check("countQuestionsBySet: setA มี 2 ข้อ", counts.get("setA"), 2);
+      check("countQuestionsBySet: setB มี 1 ข้อ", counts.get("setB"), 1);
+      check("countQuestionsBySet: คำถามไม่มี setId ไม่ถูกนับที่ไหนเลย", counts.size, 2);
+      check("countQuestionsBySet: อาร์เรย์ว่างเปล่า/undefined ไม่ crash", countQuestionsBySet(undefined).size, 0);
+    }
+
+    // --- planSubjectMigration ---
+    {
+      const qs = [
+        { id: "q1", subject: "ทวีปแอฟริกา" },
+        { id: "q2", subject: "ทวีปแอฟริกา" },
+        { id: "q3", subject: "อยุธยา" },
+        { id: "q4", subject: "อยุธยา", setId: "already-migrated" }, // ย้ายไปแล้ว ไม่ควรอยู่ในแผนอีก
+        { id: "q5", subject: "" }, // ไม่มีวิชาให้จัดกลุ่ม ข้ามไป
+        { id: "q6" }, // ไม่มี subject เลย ข้ามไป
+      ];
+      const plan = planSubjectMigration(qs);
+      check("planSubjectMigration: มี 2 กลุ่ม (แอฟริกา, อยุธยา)", plan.size, 2);
+      check("planSubjectMigration: กลุ่มทวีปแอฟริกามี 2 ข้อ", plan.get("ทวีปแอฟริกา"), ["q1", "q2"]);
+      check("planSubjectMigration: กลุ่มอยุธยามีแค่ q3 (q4 ย้ายไปแล้วไม่นับ)", plan.get("อยุธยา"), ["q3"]);
+      check("planSubjectMigration: subject ว่างเปล่า/ไม่มี ไม่ถูกจัดกลุ่มเลย", plan.has(""), false);
+
+      // เรียกซ้ำด้วยผลลัพธ์ที่ "ย้ายเสร็จแล้วทั้งหมด" (ทุกข้อมี setId) ต้องได้แผนว่างเปล่า — พิสูจน์ว่า
+      // เรียกซ้ำได้ปลอดภัยโดยไม่ย้ายซ้ำ (idempotent)
+      const afterMigration = qs.map((q) => ({ ...q, setId: q.setId ?? "migrated" }));
+      const planAfter = planSubjectMigration(afterMigration);
+      check("planSubjectMigration: ย้ายครบทุกข้อแล้ว เรียกซ้ำได้แผนว่างเปล่า (idempotent)", planAfter.size, 0);
+    }
+
+    check("planSubjectMigration: อาร์เรย์ว่างเปล่า/undefined ไม่ crash", planSubjectMigration(undefined).size, 0);
+
+    lines.push(`\n${fail === 0 ? "🎉" : "⚠️"} สรุป: ผ่าน ${pass}/${pass + fail}`);
+    logEl.innerHTML = lines.join("\n");
+    logEl.className = fail === 0 ? "ok" : "fail";
+  </script>
+</body>
+</html>

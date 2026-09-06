@@ -36,7 +36,7 @@ quizjoy/
 ├── teacher/
 │   ├── login.html          # เข้าสู่ระบบ/สมัครครู (Firebase Auth email+password)
 │   ├── index.html          # เมนูหลักของครู (guarded — เด้งไป login.html ถ้ายังไม่ login)
-│   ├── question-bank.html  # คลังข้อสอบ (สร้าง/แก้ไข/ค้นหา) — guarded
+│   ├── question-bank.html  # คลังข้อสอบ — รายการ "ชุดข้อสอบ" (การ์ด) → คลิกเข้าไปแก้ไขทีละชุด — guarded
 │   ├── host.html            # สร้างห้อง/ตั้งเวลาเล่น/เริ่มเกม/QR/monitor คะแนนสด — guarded
 │   └── review.html          # ดูผลย้อนหลังทั้งห้อง + รายบุคคล — guarded, ต่อ Firestore จริงแล้ว
 ├── firestore.rules          # Security rules ใช้งานจริง — publish แล้วในโปรเจกต์จริง
@@ -47,6 +47,9 @@ quizjoy/
     │   ├── auth-guard.js        # requireAuth()/wireLogoutButton() ใช้ร่วมกันทุกหน้าครู
     │   ├── gesture-detection.js # MediaPipe HandLandmarker wrapper (v1.0.1, GPU→CPU fallback, smoothing)
     │   ├── bonus-engine.js      # Bonus Challenge: shuffle-bag picker + 5 เกมพร้อมใช้ทั้งหมด
+    │   ├── question-sets.js     # ตรรกะ "ชุดข้อสอบ" ล้วนๆ (สี card, นับจำนวน, ย้ายข้อมูลเดิม) ไม่แตะ Firestore
+    │   ├── bulk-import.js       # แปลงข้อความหลายบรรทัดคั่นด้วย | เป็นคำถามหลายข้อพร้อมกัน
+    │   ├── rejoin.js            # หาผู้เล่นเดิมด้วยชื่อ (สำหรับฟีเจอร์ "เข้าห้องต่อ")
     │   └── sample-questions.js  # ชุดคำถามทดสอบ: สังคมศึกษา ทวีปแอฟริกา (10 ข้อ)
     └── css/
         └── style.css
@@ -54,12 +57,18 @@ test/
 ├── mediapipe-selftest.html    # ทดสอบ MediaPipe pipeline แบบ IMAGE mode (ไม่ต้องใช้กล้อง)
 ├── bonus-selftest.html        # ทดสอบ logic ของ Bonus Challenge ทั้ง 5 เกมแบบจำลอง zone event
 ├── firestore-selftest.html    # ทดสอบเขียน/อ่าน Firestore จริง (ยืนยัน config เชื่อมต่อได้)
+├── question-sets-selftest.html # ทดสอบตรรกะชุดข้อสอบ (สี card, นับจำนวน, แผนย้ายข้อมูลเดิม) — 14/14
+├── bulk-import-selftest.html  # ทดสอบ parseBulkQuestions() — 22/22
+├── rejoin-selftest.html       # ทดสอบ findExistingPlayerId() — 10/10
 └── seed-sample-questions.html # ใส่คำถามตัวอย่าง (Africa 10 ข้อ) ลงคลังข้อสอบจริง — รันครั้งเดียวพอ
 ```
 
 ## Data Model (Firestore) — ใช้งานจริงแล้ว
 
-- `questionBank/{questionId}` — subject, text, options{tl,tr,bl,br}, correctZone, explanation, createdAt
+- `questionSets/{setId}` — title, createdAt, updatedAt — "ชุดข้อสอบ" แบบ Kahoot/Blooket (การ์ดแยกกัน)
+- `questionBank/{questionId}` — subject, **setId** (ชี้กลับไปที่ `questionSets/{setId}`), text,
+  options{tl,tr,bl,br}, correctZone, explanation, createdAt — คำถามเก่าที่ยังไม่มี setId (สร้างก่อนมีระบบชุด)
+  จะถูกย้ายอัตโนมัติตอนเปิดหน้าคลังข้อสอบ (จัดกลุ่มตาม subject เดิม สร้างชุดใหม่ให้ 1 ชุดต่อ 1 กลุ่ม)
 - `sessions/{roomCode}` — quizTitle, durationMinutes, **questions[]** (snapshot เต็มของคำถามที่เลือก ณ ตอนสร้างห้อง
   ไม่ใช่แค่ id — กันปัญหาถ้าครูแก้คลังระหว่างเล่นอยู่), status, createdAt — เอกสาร id คือ room code เอง (เช่น `L3E2C`)
 - `sessions/{roomCode}/players/{studentId}` — name, joinedAt
@@ -98,6 +107,21 @@ test/
       ที่ต้องนำเข้าเฉพาะบรรทัดถูกได้ ไม่ใช่ all-or-nothing) รายงานแยกชัดเจนว่าบรรทัดไหนรูปแบบผิด (parse error)
       กับข้อไหน parse ผ่านแต่บันทึกไม่สำเร็จ (write error) คนละส่วนกัน — เจอ+แก้บั๊ก layout จริงระหว่างทดสอบ
       ด้วยตา (panel ใหม่ไหลไปแทรกคอลัมน์ขวาผิดที่ตาม CSS grid auto-flow ต้องครอบคอลัมน์ซ้ายไว้ด้วยกัน)
+      **v4 (ก.ย. 2026) — ระบบ "ชุดข้อสอบ"**: เดิมคำถามทั้งคลังกองรวมเป็นพูลเดียว ผูกกับช่อง "วิชา" ที่เป็นแค่
+      ข้อความอิสระ ไม่มีการแยกเป็น "ชุด" จริงจัง — ครูส่งภาพหน้าจอ Kahoot/Blooket มาให้ดู (my-library แสดงเป็น
+      การ์ดแยกแต่ละชุดข้อสอบ มีชื่อ/จำนวนคำถามของตัวเอง) ขอให้จัดระบบแบบเดียวกัน — เพิ่มคอลเลกชัน Firestore ใหม่
+      `questionSets` แล้วให้หน้าคลังข้อสอบเปลี่ยนเป็น 2 หน้าจอ: **รายการชุด** (การ์ดกริดสีสัน กดสร้างชุดใหม่ได้
+      จากช่องด้านบน แต่ละการ์ดมีปุ่มเปลี่ยนชื่อ/ลบทั้งชุดซ่อนอยู่ hover ถึงเห็น) → คลิกเข้าไป **รายละเอียดชุด**
+      (ฟอร์มเพิ่ม/แก้ไข + นำเข้าหลายข้อ + รายการคำถาม ที่จำกัดขอบเขตเฉพาะชุดนั้นเท่านั้น ไม่ปนกับชุดอื่นแล้ว)
+      คำถามเก่าที่มีแค่ subject เป็นข้อความ (สร้างก่อนมีระบบนี้) ถูกย้ายอัตโนมัติตอนเปิดหน้า จัดกลุ่มตามชื่อวิชา
+      เดิมทุกตัวอักษร สร้างชุดใหม่ให้ 1 ชุดต่อ 1 กลุ่ม (`planSubjectMigration()` เป็น pure function เรียกซ้ำได้
+      ปลอดภัย ย้ายครบแล้วคืนแผนว่างเปล่า) ลบทั้งชุด cascade ลบคำถามในชุดไปด้วยผ่าน `writeBatch` (กันคำถาม
+      "กำพร้า" ที่ setId ชี้ไปชุดที่ไม่มีอยู่แล้ว) — `assets/js/question-sets.js` แยกตรรกะสี/นับจำนวน/แผนย้าย
+      ข้อมูลออกมาทดสอบล้วนๆ ได้โดยไม่ต้องมี Firestore (`test/question-sets-selftest.html`, 14/14 เคส) ฝั่ง
+      `host.html` ก็ปรับตาม: ขั้นตอน "สร้างห้อง" ตอนนี้ต้องเลือกชุดข้อสอบ 1 ชุดจากการ์ดกริดก่อน แล้วค่อยเห็น
+      เฉพาะคำถามในชุดนั้นให้ติ๊กเลือก/ตัดออกได้ละเอียดอีกที (ไม่ใช่ทั้งคลังทุกวิชาปนกันเหมือนเดิม) — ทดสอบ
+      ทั้ง 2 หน้าด้วย harness bypass auth-guard ยืนยันไม่มี JS error, permission-denied ตามคาดเมื่อไม่ login
+      (ยังไม่เคยทดสอบ CRUD ชุดข้อสอบจริงกับ Firestore ที่ login แล้ว — ต้อง login ครูจริงถึงจะลองได้)
 - [x] Teacher: Quiz Builder ต่อ Firestore จริงแล้ว (`host.html`) — เลือกคำถามจากคลัง (checkbox), ตั้งชื่อ,
       ตั้งเวลาเล่น, สร้าง session doc พร้อม QR code (คลัง `qrcodejs` จาก cdnjs), คะแนนสด realtime ผ่าน onSnapshot
       **ทดสอบ end-to-end จริงแล้ว**: สร้างห้อง → นักเรียน join คนละแท็บ → ตอบคำถาม → คะแนนขึ้นที่ครูทันทีไม่ต้องรีเฟรช

@@ -11,6 +11,46 @@
     .q-pick-item { display:flex; align-items:flex-start; gap:10px; background: var(--panel); border-radius: 10px; padding: 10px; margin-bottom: 6px; break-inside: avoid-column; }
     .q-pick-item input { margin-top: 4px; }
     .q-pick-item .tag { display:inline-block; background: var(--accent); border-radius: 999px; padding: 1px 8px; font-size: 0.7rem; margin-right:6px; }
+
+    /* การ์ดเลือกชุดข้อสอบ — หน้าตาเหมือนหน้าคลังข้อสอบ (question-bank.html) ทุกประการ ตั้งใจให้ครูรู้สึก
+       คุ้นเคย/เป็นระบบเดียวกัน แต่ไม่มีปุ่มแก้ไข/ลบ (หน้านี้แค่ "เลือก" เพื่อสร้างห้อง ไม่ใช่จัดการคลัง) */
+    .sets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .set-card {
+      position: relative;
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      cursor: pointer;
+      box-shadow: var(--shadow-md);
+      color: white;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .set-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .set-card-count {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(15,23,42,0.55);
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .set-card-title {
+      font-family: "Mitr", "Sarabun", "Noto Sans Thai", system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      line-height: 1.3;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      word-break: break-word;
+    }
     #qr-code { display:flex; justify-content:center; padding: 12px; background: white; border-radius: 12px; width: fit-content; margin: 12px auto; }
     #live-score-list li { padding: 4px 0; }
     .room-code-big { font-size: 2rem; font-weight: 800; letter-spacing: 4px; text-align:center; }
@@ -101,13 +141,28 @@
     </div>
 
     <!-- ============ หน้าจอ 1/4: สร้างห้อง ============ -->
+    <!-- v2 (ก.ย. 2026): เดิมหน้านี้โหลดคำถาม "ทั้งคลัง" ทุกวิชาปนกันมาให้ติ๊กเลือกทีละข้อในลิสต์เดียว
+         พอคลังมีหลายชุด/หลายวิชาจะกวาดตาหาลำบากมาก — เปลี่ยนเป็น 2 ขั้นตอนย่อยแทน: (1) เลือก "ชุดข้อสอบ"
+         1 ชุดจากการ์ดกริดก่อน (เหมือนหน้าคลังข้อสอบ) แล้วค่อย (2) เห็นแค่คำถามของชุดนั้นให้ติ๊กเลือก/ตัดออก
+         ได้ละเอียดอีกที (ไม่ใช่บังคับใช้ทั้งชุดเป๊ะๆ เผื่ออยากตัดบางข้อออกจากรอบเล่นนี้) -->
     <section class="host-screen" id="screen-create">
       <h1>🚀 สร้างห้อง</h1>
-      <div class="panel" id="setup-panel">
+
+      <!-- ขั้นตอนย่อย 1: เลือกชุดข้อสอบ -->
+      <div class="panel" id="set-picker-panel" style="max-width:none;">
+        <h3>เลือกชุดข้อสอบ</h3>
+        <div class="sets-grid" id="host-sets-grid">
+          <p style="color:var(--muted)">กำลังโหลดชุดข้อสอบ...</p>
+        </div>
+      </div>
+
+      <!-- ขั้นตอนย่อย 2: ตั้งชื่อควิซ/เวลา + เลือกคำถามเฉพาะในชุดที่เลือกไว้ -->
+      <div class="panel" id="setup-panel" style="display:none;">
+        <a href="#" id="change-set-link" style="color:var(--muted); font-size:0.85rem;">← เปลี่ยนชุดข้อสอบ</a>
         <!-- ฟอร์มชื่อ/เวลา จำกัดความกว้างไว้บนจอกว้าง (ดู .field-group ใน CSS) ไม่งั้นช่องกรอกจะยืด
              เต็ม 1100px จนดูแปลกๆ ส่วนรายการคำถามด้านล่างปล่อยให้ใช้เต็มความกว้างได้เลย -->
         <div class="field-group">
-          <label style="display:block; margin-bottom:4px;">ชื่อควิซ</label>
+          <label style="display:block; margin: 12px 0 4px;">ชื่อควิซ</label>
           <input id="quiz-title" placeholder="เช่น สังคมศึกษา ม.2 - ทวีปแอฟริกา" style="width:100%; margin-bottom:12px;" />
 
           <label style="display:block; margin-bottom:4px;">เวลาเล่น (นาที)</label>
@@ -117,13 +172,13 @@
           </p>
         </div>
 
-        <label style="display:block; margin: 16px 0 4px;">เลือกคำถามจากคลัง</label>
+        <label style="display:block; margin: 16px 0 4px;">เลือกคำถามในชุดนี้</label>
         <div style="margin-bottom:8px;">
           <button id="select-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px;">เลือกทั้งหมด</button>
           <button id="clear-all-btn" type="button" style="font-size:0.8rem; padding:6px 10px; background:#334155;">ล้างที่เลือก</button>
         </div>
         <div id="q-pick-list">
-          <p style="color:var(--muted)">กำลังโหลดคลังข้อสอบ...</p>
+          <p style="color:var(--muted)">กำลังโหลดคำถาม...</p>
         </div>
 
         <div class="field-group">
@@ -200,6 +255,7 @@
     } from "../assets/js/firebase-init.js";
     import { requireAuth } from "../assets/js/auth-guard.js";
     import { timestampToMillis, sortResultsByScore } from "../assets/js/session-sync.js";
+    import { colorForSetId, countQuestionsBySet } from "../assets/js/question-sets.js";
 
     requireAuth(() => {
       document.getElementById("app-content").style.display = "block";
@@ -218,6 +274,11 @@
       });
     }
 
+    const hostSetsGrid = document.getElementById("host-sets-grid");
+    const setPickerPanel = document.getElementById("set-picker-panel");
+    const setupPanel = document.getElementById("setup-panel");
+    const changeSetLink = document.getElementById("change-set-link");
+    const quizTitleInput = document.getElementById("quiz-title");
     const qPickList = document.getElementById("q-pick-list");
     const selectAllBtn = document.getElementById("select-all-btn");
     const clearAllBtn = document.getElementById("clear-all-btn");
@@ -236,7 +297,9 @@
     const bgmToggleBtn = document.getElementById("bgm-toggle-btn");
     const bgm = document.getElementById("bgm");
 
-    let bankQuestions = [];
+    let allSets = [];
+    let bankQuestions = []; // ทั้งคลัง (ทุกชุดปนกัน) — กรองเฉพาะ selectedSetId ตอน render ลิสต์ติ๊กเลือก
+    let selectedSetId = null;
 
     // เพลงประกอบ: เล่นจากเครื่องครูเครื่องเดียว (ต่อลำโพง/โปรเจกเตอร์หน้าห้อง) — ปุ่มกดเองได้เผื่อครู
     // ไม่อยากเปิด หรืออยากเปิดก่อนเริ่มเกมจริงก็ได้ตามใจ ไม่ผูกอัตโนมัติเข้ากับปุ่มเริ่มเกมตายตัว
@@ -272,24 +335,80 @@
     let podiumInterval = null;
     let latestResults = [];
 
-    async function loadBank() {
-      const snap = await getDocs(collection(db, "questionBank"));
-      bankQuestions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // v2: โหลดทั้ง "ชุดข้อสอบ" และ "คำถามทั้งคลัง" มาพร้อมกันตั้งแต่ต้น (ครั้งเดียวตอนเปิดหน้า) แล้วค่อย
+    // กรองฝั่ง client ตอนเลือกชุด — ไม่ query ซ้ำทุกครั้งที่เปลี่ยนชุดที่เลือก เพราะจำนวนคำถามทั้งคลังของ
+    // ครูคนเดียวขนาดนี้ (ไม่กี่ร้อยข้อ) โหลดทีเดียวจบง่ายกว่า
+    async function loadSetsAndBank() {
+      try {
+        const [setsSnap, bankSnap] = await Promise.all([
+          getDocs(collection(db, "questionSets")),
+          getDocs(collection(db, "questionBank")),
+        ]);
+        allSets = setsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        bankQuestions = bankSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        renderSetPicker();
+      } catch (err) {
+        hostSetsGrid.innerHTML = `<p style="color:var(--wrong)">โหลดชุดข้อสอบไม่สำเร็จ: ${err.message}</p>`;
+      }
+    }
 
-      if (bankQuestions.length === 0) {
-        qPickList.innerHTML = `<p style="color:var(--muted)">
-          คลังข้อสอบยังว่างเปล่า — ไปเพิ่มคำถามที่หน้า
+    function renderSetPicker() {
+      if (allSets.length === 0) {
+        hostSetsGrid.innerHTML = `<p style="color:var(--muted)">
+          ยังไม่มีชุดข้อสอบเลย — ไปสร้างชุดที่หน้า
           <a href="question-bank.html" style="color:var(--accent)">คลังข้อสอบ</a> ก่อน
         </p>`;
         return;
       }
+      const counts = countQuestionsBySet(bankQuestions);
+      const sorted = [...allSets].sort(
+        (a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0)
+      );
+      hostSetsGrid.innerHTML = sorted
+        .map(
+          (s) => `
+        <div class="set-card" data-id="${s.id}" style="background:${colorForSetId(s.id)}">
+          <div class="set-card-count">${counts.get(s.id) ?? 0} ข้อ</div>
+          <div class="set-card-title">${s.title}</div>
+        </div>`
+        )
+        .join("");
+      hostSetsGrid.querySelectorAll(".set-card").forEach((card) => {
+        card.addEventListener("click", () => selectSet(card.dataset.id));
+      });
+    }
 
-      qPickList.innerHTML = bankQuestions
+    function selectSet(setId) {
+      selectedSetId = setId;
+      const set = allSets.find((s) => s.id === setId);
+      setPickerPanel.style.display = "none";
+      setupPanel.style.display = "block";
+      if (!quizTitleInput.value.trim()) quizTitleInput.value = set?.title ?? "";
+      renderQuestionPicker();
+    }
+
+    changeSetLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      selectedSetId = null;
+      setupPanel.style.display = "none";
+      setPickerPanel.style.display = "block";
+    });
+
+    function renderQuestionPicker() {
+      const inSet = bankQuestions.filter((q) => q.setId === selectedSetId);
+      if (inSet.length === 0) {
+        qPickList.innerHTML = `<p style="color:var(--muted)">
+          ชุดนี้ยังไม่มีคำถามเลย — ไปเพิ่มคำถามที่หน้า
+          <a href="question-bank.html" style="color:var(--accent)">คลังข้อสอบ</a> ก่อน
+        </p>`;
+        return;
+      }
+      qPickList.innerHTML = inSet
         .map(
           (q) => `
         <label class="q-pick-item">
           <input type="checkbox" class="q-pick-checkbox" value="${q.id}" checked />
-          <span><span class="tag">${q.subject}</span>${q.text}</span>
+          <span>${q.text}</span>
         </label>`
         )
         .join("");
@@ -474,7 +593,7 @@
       }
     });
 
-    loadBank();
+    loadSetsAndBank();
     } // ปิด init()
   </script>
 </body>
